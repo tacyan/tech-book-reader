@@ -7,6 +7,9 @@ class BookSearchService {
   constructor() {
     this.googleBooksAPI = 'https://www.googleapis.com/books/v1/volumes';
     this.openLibraryAPI = 'https://openlibrary.org/search.json';
+    this.gutenbergAPI = 'https://gutendex.com/books';
+    this.arxivAPI = 'http://export.arxiv.org/api/query';
+    this.internetArchiveAPI = 'https://archive.org/advancedsearch.php';
   }
 
   /**
@@ -94,13 +97,132 @@ class BookSearchService {
   }
 
   /**
-   * 複数のソースから検索（統合検索）
+   * Project Gutenberg（グーテンベルク）で検索
+   * パブリックドメインの70,000以上の無料書籍
+   */
+  async searchGutenberg(query, options = {}) {
+    try {
+      const { limit = 20 } = options;
+
+      const params = new URLSearchParams({
+        search: query,
+        mime_type: 'application/pdf' // PDFのみ
+      });
+
+      const response = await fetch(`${this.gutenbergAPI}?${params}`);
+      const data = await response.json();
+
+      if (!data.results || data.results.length === 0) {
+        return { success: true, books: [], totalItems: 0 };
+      }
+
+      const books = data.results.slice(0, limit).map(item => this.parseGutenbergItem(item));
+
+      return {
+        success: true,
+        books,
+        totalItems: books.length
+      };
+    } catch (error) {
+      console.error('Gutenberg API error:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Internet Archiveで検索
+   * 膨大な無料PDFコレクション
+   */
+  async searchInternetArchive(query, options = {}) {
+    try {
+      const { limit = 20 } = options;
+
+      const params = new URLSearchParams({
+        q: `${query} AND mediatype:texts AND format:pdf`,
+        fl: 'identifier,title,creator,date,subject,description,downloads',
+        rows: limit,
+        output: 'json'
+      });
+
+      const response = await fetch(`${this.internetArchiveAPI}?${params}`);
+      const data = await response.json();
+
+      if (!data.response || !data.response.docs || data.response.docs.length === 0) {
+        return { success: true, books: [], totalItems: 0 };
+      }
+
+      const books = data.response.docs.map(doc => this.parseInternetArchiveItem(doc));
+
+      return {
+        success: true,
+        books,
+        totalItems: books.length
+      };
+    } catch (error) {
+      console.error('Internet Archive API error:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * arXiv（アーカイブ）で検索
+   * 科学・技術論文の無料アーカイブ（2百万以上の論文）
+   */
+  async searchArxiv(query, options = {}) {
+    try {
+      const { limit = 20 } = options;
+
+      const params = new URLSearchParams({
+        search_query: `all:${query}`,
+        start: 0,
+        max_results: limit,
+        sortBy: 'relevance',
+        sortOrder: 'descending'
+      });
+
+      const response = await fetch(`${this.arxivAPI}?${params}`);
+      const text = await response.text();
+
+      // XMLをパース
+      const parser = new DOMParser();
+      const xml = parser.parseFromString(text, 'text/xml');
+      const entries = xml.querySelectorAll('entry');
+
+      if (entries.length === 0) {
+        return { success: true, books: [], totalItems: 0 };
+      }
+
+      const books = Array.from(entries).map(entry => this.parseArxivItem(entry));
+
+      return {
+        success: true,
+        books,
+        totalItems: books.length
+      };
+    } catch (error) {
+      console.error('arXiv API error:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * 複数のソースから検索（統合検索）- 世界中のPDFを検索
    */
   async searchAll(query, options = {}) {
     try {
-      const [googleResult, openLibraryResult] = await Promise.all([
+      // 並列で全ソースを検索
+      const [
+        googleResult,
+        openLibraryResult,
+        gutenbergResult,
+        internetArchiveResult,
+        arxivResult
+      ] = await Promise.all([
         this.searchGoogleBooks(query, options),
-        this.searchOpenLibrary(query, options)
+        this.searchOpenLibrary(query, options),
+        this.searchGutenberg(query, options),
+        this.searchInternetArchive(query, options),
+        this.searchArxiv(query, options)
       ]);
 
       const allBooks = [];
@@ -113,11 +235,23 @@ class BookSearchService {
         allBooks.push(...openLibraryResult.books.map(b => ({ ...b, source: 'Open Library' })));
       }
 
-      // 重複を除去（ISBNベース）
+      if (gutenbergResult.success) {
+        allBooks.push(...gutenbergResult.books.map(b => ({ ...b, source: 'Project Gutenberg' })));
+      }
+
+      if (internetArchiveResult.success) {
+        allBooks.push(...internetArchiveResult.books.map(b => ({ ...b, source: 'Internet Archive' })));
+      }
+
+      if (arxivResult.success) {
+        allBooks.push(...arxivResult.books.map(b => ({ ...b, source: 'arXiv' })));
+      }
+
+      // 重複を除去（タイトル+著者ベース）
       const uniqueBooks = this.removeDuplicates(allBooks);
 
-      // 技術書を優先してソート
-      const sortedBooks = this.prioritizeTechBooks(uniqueBooks);
+      // 関連性でソート
+      const sortedBooks = this.sortByRelevance(uniqueBooks, query);
 
       return {
         success: true,
@@ -212,6 +346,141 @@ class BookSearchService {
   }
 
   /**
+   * Project Gutenbergのアイテムをパース
+   */
+  parseGutenbergItem(item) {
+    const authors = item.authors && item.authors.length > 0
+      ? item.authors.map(a => a.name)
+      : ['Unknown Author'];
+
+    // PDFダウンロードリンクを探す
+    let downloadLink = null;
+    if (item.formats) {
+      downloadLink = item.formats['application/pdf'] ||
+                     item.formats['application/x-pdf'] ||
+                     null;
+    }
+
+    return {
+      id: `gutenberg-${item.id}`,
+      title: item.title || 'Unknown Title',
+      authors: authors,
+      publisher: 'Project Gutenberg',
+      publishedDate: '',
+      description: '',
+      isbn: '',
+      pageCount: 0,
+      categories: item.subjects ? item.subjects.slice(0, 5) : [],
+      thumbnail: item.formats && item.formats['image/jpeg'] ? item.formats['image/jpeg'] : null,
+      previewLink: `https://www.gutenberg.org/ebooks/${item.id}`,
+      infoLink: `https://www.gutenberg.org/ebooks/${item.id}`,
+      buyLink: '',
+      price: 'Free',
+      rating: 0,
+      ratingsCount: 0,
+      isFree: true,
+      pdfAvailable: downloadLink !== null,
+      epubAvailable: item.formats && item.formats['application/epub+zip'] !== undefined,
+      downloadLink: downloadLink
+    };
+  }
+
+  /**
+   * Internet Archiveのアイテムをパース
+   */
+  parseInternetArchiveItem(doc) {
+    const identifier = doc.identifier;
+    const downloadLink = `https://archive.org/download/${identifier}/${identifier}.pdf`;
+
+    return {
+      id: `ia-${identifier}`,
+      title: doc.title || 'Unknown Title',
+      authors: doc.creator ? (Array.isArray(doc.creator) ? doc.creator : [doc.creator]) : ['Unknown Author'],
+      publisher: 'Internet Archive',
+      publishedDate: doc.date || '',
+      description: doc.description || '',
+      isbn: '',
+      pageCount: 0,
+      categories: doc.subject ? (Array.isArray(doc.subject) ? doc.subject.slice(0, 5) : [doc.subject]) : [],
+      thumbnail: `https://archive.org/services/img/${identifier}`,
+      previewLink: `https://archive.org/details/${identifier}`,
+      infoLink: `https://archive.org/details/${identifier}`,
+      buyLink: '',
+      price: 'Free',
+      rating: 0,
+      ratingsCount: doc.downloads || 0,
+      isFree: true,
+      pdfAvailable: true,
+      epubAvailable: false,
+      downloadLink: downloadLink
+    };
+  }
+
+  /**
+   * arXivのアイテムをパース
+   */
+  parseArxivItem(entry) {
+    const getId = (entry) => {
+      const id = entry.querySelector('id');
+      return id ? id.textContent : '';
+    };
+
+    const getTitle = (entry) => {
+      const title = entry.querySelector('title');
+      return title ? title.textContent.trim() : 'Unknown Title';
+    };
+
+    const getAuthors = (entry) => {
+      const authors = entry.querySelectorAll('author name');
+      return authors.length > 0
+        ? Array.from(authors).map(a => a.textContent)
+        : ['Unknown Author'];
+    };
+
+    const getSummary = (entry) => {
+      const summary = entry.querySelector('summary');
+      return summary ? summary.textContent.trim() : '';
+    };
+
+    const getPublished = (entry) => {
+      const published = entry.querySelector('published');
+      return published ? published.textContent.substring(0, 10) : '';
+    };
+
+    const getCategories = (entry) => {
+      const categories = entry.querySelectorAll('category');
+      return Array.from(categories).map(c => c.getAttribute('term')).slice(0, 5);
+    };
+
+    const id = getId(entry);
+    const arxivId = id.split('/').pop();
+    const downloadLink = `https://arxiv.org/pdf/${arxivId}.pdf`;
+
+    return {
+      id: `arxiv-${arxivId}`,
+      title: getTitle(entry),
+      authors: getAuthors(entry),
+      publisher: 'arXiv',
+      publishedDate: getPublished(entry),
+      description: getSummary(entry),
+      isbn: '',
+      pageCount: 0,
+      categories: getCategories(entry),
+      thumbnail: null,
+      previewLink: `https://arxiv.org/abs/${arxivId}`,
+      infoLink: `https://arxiv.org/abs/${arxivId}`,
+      buyLink: '',
+      price: 'Free',
+      rating: 0,
+      ratingsCount: 0,
+      isFree: true,
+      pdfAvailable: true,
+      epubAvailable: false,
+      downloadLink: downloadLink
+    };
+  }
+
+  /**
    * ISBNを抽出
    */
   extractISBN(identifiers) {
@@ -242,6 +511,58 @@ class BookSearchService {
       seen.add(key);
       return true;
     });
+  }
+
+  /**
+   * 関連性でソート
+   */
+  sortByRelevance(books, query) {
+    const queryLower = query.toLowerCase();
+
+    return books.sort((a, b) => {
+      // タイトルに検索クエリが含まれているかスコアリング
+      const aScore = this.calculateRelevanceScore(a, queryLower);
+      const bScore = this.calculateRelevanceScore(b, queryLower);
+
+      return bScore - aScore;
+    });
+  }
+
+  /**
+   * 関連性スコアを計算
+   */
+  calculateRelevanceScore(book, queryLower) {
+    let score = 0;
+
+    // タイトルに完全一致
+    if (book.title.toLowerCase().includes(queryLower)) {
+      score += 10;
+    }
+
+    // 著者名に一致
+    if (book.authors.some(author => author.toLowerCase().includes(queryLower))) {
+      score += 5;
+    }
+
+    // カテゴリに一致
+    if (book.categories.some(cat => cat.toLowerCase().includes(queryLower))) {
+      score += 3;
+    }
+
+    // PDFが利用可能
+    if (book.pdfAvailable) {
+      score += 5;
+    }
+
+    // ダウンロードリンクがある
+    if (book.downloadLink) {
+      score += 5;
+    }
+
+    // レーティング
+    score += (book.rating * book.ratingsCount) / 100;
+
+    return score;
   }
 
   /**
@@ -284,22 +605,74 @@ class BookSearchService {
   }
 
   /**
-   * 人気の技術書トピックを取得
+   * 人気のトピックを取得（技術書＋一般書籍）
    */
   getPopularTopics() {
     return [
+      // プログラミング言語
       { name: 'JavaScript', query: 'javascript programming' },
       { name: 'Python', query: 'python programming' },
+      { name: 'Java', query: 'java programming' },
+      { name: 'C++', query: 'c++ programming' },
+      { name: 'Rust', query: 'rust programming' },
+      { name: 'Go', query: 'golang programming' },
+      { name: 'TypeScript', query: 'typescript programming' },
+      { name: 'Swift', query: 'swift programming' },
+
+      // Web開発
       { name: 'Web Development', query: 'web development' },
+      { name: 'React', query: 'react programming' },
+      { name: 'Vue.js', query: 'vuejs programming' },
+      { name: 'Node.js', query: 'nodejs programming' },
+      { name: 'Frontend', query: 'frontend development' },
+      { name: 'Backend', query: 'backend development' },
+
+      // データサイエンス・AI
       { name: 'Machine Learning', query: 'machine learning' },
       { name: 'Data Science', query: 'data science' },
+      { name: 'Deep Learning', query: 'deep learning' },
+      { name: 'Artificial Intelligence', query: 'artificial intelligence' },
+      { name: 'Neural Networks', query: 'neural networks' },
+
+      // DevOps・インフラ
       { name: 'DevOps', query: 'devops' },
       { name: 'Cloud Computing', query: 'cloud computing' },
-      { name: 'Algorithms', query: 'algorithms data structures' },
-      { name: 'React', query: 'react programming' },
-      { name: 'Node.js', query: 'nodejs programming' },
       { name: 'Docker', query: 'docker containers' },
-      { name: 'Kubernetes', query: 'kubernetes' }
+      { name: 'Kubernetes', query: 'kubernetes' },
+      { name: 'AWS', query: 'amazon web services' },
+      { name: 'Linux', query: 'linux administration' },
+
+      // コンピュータサイエンス
+      { name: 'Algorithms', query: 'algorithms data structures' },
+      { name: 'Computer Science', query: 'computer science' },
+      { name: 'System Design', query: 'system design' },
+      { name: 'Database', query: 'database design' },
+
+      // ビジネス・自己啓発
+      { name: 'Business', query: 'business management' },
+      { name: 'Marketing', query: 'marketing strategy' },
+      { name: 'Leadership', query: 'leadership management' },
+      { name: 'Self-Help', query: 'self improvement' },
+      { name: 'Productivity', query: 'productivity time management' },
+
+      // 文学
+      { name: 'Classic Literature', query: 'classic literature' },
+      { name: 'Fiction', query: 'fiction novels' },
+      { name: 'Science Fiction', query: 'science fiction' },
+      { name: 'Mystery', query: 'mystery detective' },
+      { name: 'Philosophy', query: 'philosophy' },
+
+      // 科学
+      { name: 'Physics', query: 'physics science' },
+      { name: 'Mathematics', query: 'mathematics' },
+      { name: 'Biology', query: 'biology science' },
+      { name: 'Chemistry', query: 'chemistry science' },
+
+      // 歴史・社会
+      { name: 'History', query: 'history' },
+      { name: 'Economics', query: 'economics' },
+      { name: 'Psychology', query: 'psychology' },
+      { name: 'Sociology', query: 'sociology' }
     ];
   }
 
@@ -515,6 +888,174 @@ class BookSearchService {
         downloadLink: 'https://www.gutenberg.org/files/1228/1228-pdf.pdf',
         pageCount: 502,
         keywords: ['darwin', 'evolution', 'biology', 'science', 'ダーウィン', '進化', '生物学']
+      },
+      // Web Development
+      {
+        id: 'dive-into-html5',
+        title: 'Dive Into HTML5',
+        authors: ['Mark Pilgrim'],
+        publisher: 'Self-published',
+        publishedDate: '2010',
+        description: 'HTML5の詳細なガイド。Web開発者必携の書。',
+        categories: ['HTML5', 'Web Development'],
+        thumbnail: null,
+        downloadLink: 'https://diveinto.html5doctor.com/examples/dive-into-html5-screen.pdf',
+        pageCount: 300,
+        keywords: ['html5', 'html', 'web', 'development', 'frontend', 'ウェブ開発']
+      },
+      // データベース
+      {
+        id: 'postgres-guide',
+        title: 'PostgreSQL Tutorial',
+        authors: ['PostgreSQL Global Development Group'],
+        publisher: 'PostgreSQL',
+        publishedDate: '2023',
+        description: 'PostgreSQLの公式チュートリアル。データベース管理の基礎から応用まで。',
+        categories: ['Database', 'PostgreSQL', 'SQL'],
+        thumbnail: null,
+        downloadLink: 'https://www.postgresql.org/files/documentation/pdf/15/postgresql-15-A4.pdf',
+        pageCount: 3000,
+        keywords: ['postgresql', 'postgres', 'database', 'sql', 'データベース']
+      },
+      // アルゴリズム
+      {
+        id: 'algorithms-notes',
+        title: 'Algorithms Notes for Professionals',
+        authors: ['GoalKicker.com'],
+        publisher: 'GoalKicker.com',
+        publishedDate: '2018',
+        description: 'アルゴリズムとデータ構造の包括的なノート集。',
+        categories: ['Algorithms', 'Data Structures', 'Computer Science'],
+        thumbnail: null,
+        downloadLink: 'https://goalkicker.com/AlgorithmsBook/AlgorithmsNotesForProfessionals.pdf',
+        pageCount: 257,
+        keywords: ['algorithms', 'data structures', 'computer science', 'アルゴリズム', 'データ構造']
+      },
+      // TypeScript
+      {
+        id: 'typescript-deep-dive',
+        title: 'TypeScript Deep Dive',
+        authors: ['Basarat Ali Syed'],
+        publisher: 'Self-published',
+        publishedDate: '2022',
+        description: 'TypeScriptの詳細ガイド。型システムから実践的な使い方まで。',
+        categories: ['TypeScript', 'JavaScript', 'Programming'],
+        thumbnail: null,
+        downloadLink: 'https://basarat.gitbook.io/typescript/download',
+        pageCount: 400,
+        keywords: ['typescript', 'ts', 'javascript', 'programming', 'タイプスクリプト']
+      },
+      // Node.js
+      {
+        id: 'nodejs-notes',
+        title: 'Node.js Notes for Professionals',
+        authors: ['GoalKicker.com'],
+        publisher: 'GoalKicker.com',
+        publishedDate: '2018',
+        description: 'Node.jsの実践的なノート集。バックエンド開発に必須。',
+        categories: ['Node.js', 'JavaScript', 'Backend'],
+        thumbnail: null,
+        downloadLink: 'https://goalkicker.com/NodeJSBook/NodeJSNotesForProfessionals.pdf',
+        pageCount: 340,
+        keywords: ['nodejs', 'node', 'javascript', 'backend', 'server', 'ノード']
+      },
+      // React
+      {
+        id: 'react-notes',
+        title: 'React.js Notes for Professionals',
+        authors: ['GoalKicker.com'],
+        publisher: 'GoalKicker.com',
+        publishedDate: '2018',
+        description: 'React.jsの実践的なノート集。モダンなフロントエンド開発。',
+        categories: ['React', 'JavaScript', 'Frontend'],
+        thumbnail: null,
+        downloadLink: 'https://goalkicker.com/ReactJSBook/ReactJSNotesForProfessionals.pdf',
+        pageCount: 176,
+        keywords: ['react', 'reactjs', 'javascript', 'frontend', 'リアクト']
+      },
+      // CSS
+      {
+        id: 'css-notes',
+        title: 'CSS Notes for Professionals',
+        authors: ['GoalKicker.com'],
+        publisher: 'GoalKicker.com',
+        publishedDate: '2018',
+        description: 'CSSの包括的なノート集。スタイリングの基礎から応用まで。',
+        categories: ['CSS', 'Web Design', 'Frontend'],
+        thumbnail: null,
+        downloadLink: 'https://goalkicker.com/CSSBook/CSSNotesForProfessionals.pdf',
+        pageCount: 357,
+        keywords: ['css', 'styling', 'web design', 'frontend', 'スタイル']
+      },
+      // Java
+      {
+        id: 'java-notes',
+        title: 'Java Notes for Professionals',
+        authors: ['GoalKicker.com'],
+        publisher: 'GoalKicker.com',
+        publishedDate: '2018',
+        description: 'Javaプログラミングの包括的なノート集。',
+        categories: ['Java', 'Programming', 'OOP'],
+        thumbnail: null,
+        downloadLink: 'https://goalkicker.com/JavaBook/JavaNotesForProfessionals.pdf',
+        pageCount: 1036,
+        keywords: ['java', 'programming', 'oop', 'jvm', 'ジャバ', 'プログラミング']
+      },
+      // C++
+      {
+        id: 'cpp-notes',
+        title: 'C++ Notes for Professionals',
+        authors: ['GoalKicker.com'],
+        publisher: 'GoalKicker.com',
+        publishedDate: '2018',
+        description: 'C++プログラミングの実践的なノート集。',
+        categories: ['C++', 'Programming', 'Systems'],
+        thumbnail: null,
+        downloadLink: 'https://goalkicker.com/CPlusPlusBook/CPlusPlusNotesForProfessionals.pdf',
+        pageCount: 707,
+        keywords: ['c++', 'cpp', 'programming', 'systems', 'プログラミング']
+      },
+      // MongoDB
+      {
+        id: 'mongodb-notes',
+        title: 'MongoDB Notes for Professionals',
+        authors: ['GoalKicker.com'],
+        publisher: 'GoalKicker.com',
+        publishedDate: '2018',
+        description: 'MongoDBの実践的なノート集。NoSQLデータベースの基礎。',
+        categories: ['MongoDB', 'Database', 'NoSQL'],
+        thumbnail: null,
+        downloadLink: 'https://goalkicker.com/MongoDBBook/MongoDBNotesForProfessionals.pdf',
+        pageCount: 109,
+        keywords: ['mongodb', 'mongo', 'database', 'nosql', 'データベース']
+      },
+      // 哲学
+      {
+        id: 'republic-plato',
+        title: 'The Republic',
+        authors: ['Plato'],
+        publisher: 'Project Gutenberg',
+        publishedDate: '380 BC',
+        description: 'プラトンの「国家」。政治哲学の古典的名著。',
+        categories: ['Philosophy', 'Classic', 'Politics'],
+        thumbnail: null,
+        downloadLink: 'https://www.gutenberg.org/files/1497/1497-pdf.pdf',
+        pageCount: 300,
+        keywords: ['plato', 'philosophy', 'republic', 'classic', 'プラトン', '哲学', '国家']
+      },
+      // 経済学
+      {
+        id: 'wealth-of-nations',
+        title: 'The Wealth of Nations',
+        authors: ['Adam Smith'],
+        publisher: 'Project Gutenberg',
+        publishedDate: '1776',
+        description: 'アダム・スミスの「国富論」。近代経済学の基礎。',
+        categories: ['Economics', 'Classic', 'Business'],
+        thumbnail: null,
+        downloadLink: 'https://www.gutenberg.org/files/3300/3300-pdf.pdf',
+        pageCount: 1200,
+        keywords: ['economics', 'adam smith', 'wealth', 'business', '経済学', '国富論']
       }
     ];
   }
@@ -569,26 +1110,44 @@ class BookSearchService {
       // まず、キュレートされた無料PDFを検索
       const freePdfs = this.searchFreePdfs(query);
 
-      // API検索を実行
-      const [googleResult, openLibraryResult] = await Promise.all([
-        this.searchGoogleBooks(query, options),
-        this.searchOpenLibrary(query, options)
+      // 全ソースから並列で検索
+      const [
+        openLibraryResult,
+        gutenbergResult,
+        internetArchiveResult
+      ] = await Promise.all([
+        this.searchOpenLibrary(query, options).catch(err => {
+          console.error('Open Library error:', err);
+          return { success: false, books: [] };
+        }),
+        this.searchGutenberg(query, options).catch(err => {
+          console.error('Gutenberg error:', err);
+          return { success: false, books: [] };
+        }),
+        this.searchInternetArchive(query, options).catch(err => {
+          console.error('Internet Archive error:', err);
+          return { success: false, books: [] };
+        })
       ]);
 
       const allBooks = [];
 
-      // 無料PDFを最優先で追加
+      // 無料PDFカタログを最優先で追加
       if (freePdfs.length > 0) {
         allBooks.push(...freePdfs);
       }
 
-      // 他の結果を追加
-      if (googleResult.success) {
-        allBooks.push(...googleResult.books.map(b => ({ ...b, source: 'Google Books' })));
+      // 他のソースの結果を追加
+      if (openLibraryResult.success && openLibraryResult.books.length > 0) {
+        allBooks.push(...openLibraryResult.books.map(b => ({ ...b, source: 'Open Library' })));
       }
 
-      if (openLibraryResult.success) {
-        allBooks.push(...openLibraryResult.books.map(b => ({ ...b, source: 'Open Library' })));
+      if (gutenbergResult.success && gutenbergResult.books.length > 0) {
+        allBooks.push(...gutenbergResult.books.map(b => ({ ...b, source: 'Project Gutenberg' })));
+      }
+
+      if (internetArchiveResult.success && internetArchiveResult.books.length > 0) {
+        allBooks.push(...internetArchiveResult.books.map(b => ({ ...b, source: 'Internet Archive' })));
       }
 
       // 重複を除去

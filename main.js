@@ -440,34 +440,65 @@ ipcMain.handle('get-chapter-text', async (event, filePath, chapterIndex) => {
 // 利用可能な音声リストを取得
 ipcMain.handle('get-voices', async () => {
   try {
-    return new Promise((resolve, reject) => {
-      const sayProcess = spawn('say', ['-v', '?']);
-      let output = '';
+    if (platform === 'darwin') {
+      // macOS: sayコマンドから音声リストを取得
+      return new Promise((resolve, reject) => {
+        const sayProcess = spawn('say', ['-v', '?']);
+        let output = '';
 
-      sayProcess.stdout.on('data', (data) => {
-        output += data.toString();
-      });
+        sayProcess.stdout.on('data', (data) => {
+          output += data.toString();
+        });
 
-      sayProcess.on('close', (code) => {
-        if (code === 0) {
-          const voices = output.split('\n')
-            .filter(line => line.trim().length > 0)
-            .map(line => {
-              const match = line.match(/^(\S+)/);
-              return match ? match[1] : null;
-            })
-            .filter(v => v !== null);
+        sayProcess.on('close', (code) => {
+          if (code === 0) {
+            const voices = output.split('\n')
+              .filter(line => line.trim().length > 0)
+              .map(line => {
+                const match = line.match(/^(\S+)/);
+                return match ? match[1] : null;
+              })
+              .filter(v => v !== null);
 
-          resolve({ success: true, data: voices });
-        } else {
+            resolve({ success: true, data: voices });
+          } else {
+            resolve({ success: true, data: ['Kyoko', 'Otoya', 'Alex', 'Samantha'] });
+          }
+        });
+
+        sayProcess.on('error', (error) => {
           resolve({ success: true, data: ['Kyoko', 'Otoya', 'Alex', 'Samantha'] });
-        }
+        });
       });
 
-      sayProcess.on('error', (error) => {
-        reject({ success: false, error: error.message });
-      });
-    });
+    } else if (platform === 'win32') {
+      // Windows: デフォルトの音声リスト（SAPI標準）
+      return {
+        success: true,
+        data: [
+          'Microsoft David Desktop',
+          'Microsoft Zira Desktop',
+          'Microsoft Mark',
+          'Microsoft Haruka Desktop', // 日本語
+          'Microsoft Sayaka Desktop'  // 日本語
+        ]
+      };
+
+    } else if (platform === 'linux') {
+      // Linux: espeakのデフォルト音声
+      return {
+        success: true,
+        data: [
+          'en', 'en-us', 'en-uk',
+          'ja', // 日本語
+          'default'
+        ]
+      };
+    }
+
+    // フォールバック
+    return { success: true, data: ['default'] };
+
   } catch (error) {
     return { success: false, error: error.message };
   }
@@ -490,6 +521,9 @@ ipcMain.handle('get-tts-config', async () => {
 });
 
 // TTSを開始
+// プラットフォームを検出
+const platform = process.platform; // 'darwin', 'win32', 'linux'
+
 ipcMain.handle('start-tts', async (event, text, options = {}) => {
   try {
     // 既存のTTSを停止
@@ -500,36 +534,68 @@ ipcMain.handle('start-tts', async (event, text, options = {}) => {
 
     const voice = options.voice || 'Kyoko';
     const speed = options.speed || 2.0;
-    const rate = Math.round(175 * speed); // WPMに変換
 
-    // テキストをエスケープ
-    const escapedText = text.replace(/"/g, '\\"');
+    // プラットフォームに応じてTTSを起動
+    if (platform === 'darwin') {
+      // macOS: say コマンド
+      const rate = Math.round(175 * speed);
+      const escapedText = text.replace(/"/g, '\\"');
 
-    // sayコマンドでTTSを開始
-    ttsProcess = spawn('say', [
-      '-v', voice,
-      '-r', rate.toString(),
-      escapedText
-    ]);
+      ttsProcess = spawn('say', [
+        '-v', voice,
+        '-r', rate.toString(),
+        escapedText
+      ]);
 
-    ttsProcess.on('close', (code) => {
-      console.log('TTS finished with code:', code);
-      ttsProcess = null;
-      // 完了イベントを送信
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('tts-finished');
-      }
-    });
+    } else if (platform === 'win32') {
+      // Windows: PowerShellでSAPI (Speech API) を使用
+      const rate = Math.round(speed * 2 - 2); // -10〜10の範囲に変換
 
-    ttsProcess.on('error', (error) => {
-      console.error('TTS error:', error);
-      ttsProcess = null;
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('tts-error', error.message);
-      }
-    });
+      // PowerShellスクリプト
+      const psScript = `
+        Add-Type -AssemblyName System.Speech;
+        $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer;
+        $synth.Rate = ${rate};
+        $synth.Speak("${text.replace(/"/g, '""').replace(/\n/g, ' ')}");
+      `;
 
-    return { success: true };
+      ttsProcess = spawn('powershell.exe', [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        psScript
+      ]);
+
+    } else if (platform === 'linux') {
+      // Linux: espeak
+      const rate = Math.round(175 * speed);
+      const escapedText = text.replace(/"/g, '\\"');
+
+      ttsProcess = spawn('espeak', [
+        '-s', rate.toString(),
+        escapedText
+      ]);
+    }
+
+    if (ttsProcess) {
+      ttsProcess.on('close', (code) => {
+        console.log(`TTS finished with code: ${code} on ${platform}`);
+        ttsProcess = null;
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('tts-finished');
+        }
+      });
+
+      ttsProcess.on('error', (error) => {
+        console.error('TTS error:', error);
+        ttsProcess = null;
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('tts-error', error.message);
+        }
+      });
+    }
+
+    return { success: true, platform: platform };
   } catch (error) {
     console.error('Error starting TTS:', error);
     return { success: false, error: error.message };

@@ -402,6 +402,12 @@ function renderPublishers() {
   });
 }
 
+// 検索状態を保持
+let currentSearchResults = [];
+let currentPage = 1;
+const RESULTS_PER_PAGE = 10;
+let currentCategory = 'all'; // 'all', 'tech', 'general'
+
 async function searchBooks() {
   const query = document.getElementById('bookSearch').value.trim();
   if (!query) {
@@ -414,27 +420,46 @@ async function searchBooks() {
 
   try {
     console.log('Searching for:', query);
-    // 新しいsearchAllWithFreePdfsメソッドを使用（キュレートされた無料PDFを優先）
-    const result = await bookSearchService.searchAllWithFreePdfs(query);
 
-    if (result.success && result.books.length > 0) {
-      resultsContainer.innerHTML = result.books.map(book => createSearchResultCard(book)).join('');
+    // まずキュレートされたPDFカタログから即座に検索
+    const freePdfs = bookSearchService.searchFreePdfs(query);
 
-      // 「ライブラリに追加」ボタンにイベントリスナーを追加
-      document.querySelectorAll('.btn-download-to-library').forEach(button => {
-        button.addEventListener('click', async (e) => {
-          const card = e.target.closest('.result-card');
-          const bookJson = card.dataset.bookJson;
-          const book = JSON.parse(bookJson.replace(/&quot;/g, '"'));
-          await downloadAndAddToLibrary(book);
-        });
-      });
+    // 最初の10件をすぐに表示
+    if (freePdfs.length > 0) {
+      currentSearchResults = freePdfs;
+      currentPage = 1;
+      displaySearchResults();
+    }
 
-      // 無料PDFの数を表示
-      const freePdfCount = result.books.filter(b => b.source === 'Curated Free PDFs').length;
-      if (freePdfCount > 0) {
-        console.log(`Found ${freePdfCount} curated free PDFs`);
-      }
+    // バックグラウンドでAPI検索を実行
+    const [openLibraryResult, gutenbergResult, internetArchiveResult] = await Promise.all([
+      bookSearchService.searchOpenLibrary(query, { limit: 20 }).catch(() => ({ success: false, books: [] })),
+      bookSearchService.searchGutenberg(query, { limit: 20 }).catch(() => ({ success: false, books: [] })),
+      bookSearchService.searchInternetArchive(query, { limit: 20 }).catch(() => ({ success: false, books: [] }))
+    ]);
+
+    // API結果を統合
+    const allBooks = [...freePdfs];
+
+    if (openLibraryResult.success && openLibraryResult.books.length > 0) {
+      allBooks.push(...openLibraryResult.books.map(b => ({ ...b, source: 'Open Library' })));
+    }
+
+    if (gutenbergResult.success && gutenbergResult.books.length > 0) {
+      allBooks.push(...gutenbergResult.books.map(b => ({ ...b, source: 'Project Gutenberg' })));
+    }
+
+    if (internetArchiveResult.success && internetArchiveResult.books.length > 0) {
+      allBooks.push(...internetArchiveResult.books.map(b => ({ ...b, source: 'Internet Archive' })));
+    }
+
+    // 重複を除去
+    const uniqueBooks = bookSearchService.removeDuplicates(allBooks);
+
+    if (uniqueBooks.length > 0) {
+      currentSearchResults = uniqueBooks;
+      currentPage = 1;
+      displaySearchResults();
     } else {
       resultsContainer.innerHTML = `
         <div class="empty-state">
@@ -454,6 +479,113 @@ async function searchBooks() {
       </div>
     `;
   }
+}
+
+function displaySearchResults() {
+  const resultsContainer = document.getElementById('searchResults');
+
+  // カテゴリフィルタリング
+  let filteredResults = currentSearchResults;
+  if (currentCategory === 'tech') {
+    filteredResults = currentSearchResults.filter(book => isTechBook(book));
+  } else if (currentCategory === 'general') {
+    filteredResults = currentSearchResults.filter(book => !isTechBook(book));
+  }
+
+  const totalResults = filteredResults.length;
+  const totalPages = Math.ceil(totalResults / RESULTS_PER_PAGE);
+  const startIndex = (currentPage - 1) * RESULTS_PER_PAGE;
+  const endIndex = Math.min(startIndex + RESULTS_PER_PAGE, totalResults);
+  const pageResults = filteredResults.slice(startIndex, endIndex);
+
+  if (pageResults.length === 0) {
+    resultsContainer.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">❌</div>
+        <h3>このカテゴリに結果がありません</h3>
+        <p>別のカテゴリまたはキーワードで検索してください</p>
+      </div>
+    `;
+    return;
+  }
+
+  // カテゴリフィルタUIを追加
+  const categoryFilter = `
+    <div class="category-filter">
+      <button class="category-btn ${currentCategory === 'all' ? 'active' : ''}" onclick="filterCategory('all')">
+        すべて (${currentSearchResults.length})
+      </button>
+      <button class="category-btn ${currentCategory === 'tech' ? 'active' : ''}" onclick="filterCategory('tech')">
+        技術書 (${currentSearchResults.filter(b => isTechBook(b)).length})
+      </button>
+      <button class="category-btn ${currentCategory === 'general' ? 'active' : ''}" onclick="filterCategory('general')">
+        一般書籍 (${currentSearchResults.filter(b => !isTechBook(b)).length})
+      </button>
+    </div>
+  `;
+
+  // ページネーションUI
+  const pagination = totalPages > 1 ? `
+    <div class="pagination">
+      <button class="pagination-btn" onclick="changePage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>
+        ← 前へ
+      </button>
+      <span class="pagination-info">
+        ${startIndex + 1}〜${endIndex}件 / 全${totalResults}件 (ページ ${currentPage}/${totalPages})
+      </span>
+      <button class="pagination-btn" onclick="changePage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''}>
+        次へ →
+      </button>
+    </div>
+  ` : '';
+
+  resultsContainer.innerHTML = categoryFilter + pagination +
+    pageResults.map(book => createSearchResultCard(book)).join('') +
+    pagination;
+
+  // 「ライブラリに追加」ボタンにイベントリスナーを追加
+  document.querySelectorAll('.btn-download-to-library').forEach(button => {
+    button.addEventListener('click', async (e) => {
+      const card = e.target.closest('.result-card');
+      const bookJson = card.dataset.bookJson;
+      const book = JSON.parse(bookJson.replace(/&quot;/g, '"'));
+      await downloadAndAddToLibrary(book);
+    });
+  });
+}
+
+function isTechBook(book) {
+  const techKeywords = [
+    'programming', 'software', 'computer', 'algorithm', 'data',
+    'web', 'javascript', 'python', 'java', 'development',
+    'engineering', 'machine learning', 'ai', 'devops', 'cloud',
+    'database', 'react', 'node', 'typescript', 'rust', 'go',
+    'docker', 'kubernetes', 'linux', 'html', 'css', 'sql'
+  ];
+
+  const searchText = `${book.title} ${book.categories.join(' ')} ${book.description}`.toLowerCase();
+  return techKeywords.some(keyword => searchText.includes(keyword.toLowerCase()));
+}
+
+function filterCategory(category) {
+  currentCategory = category;
+  currentPage = 1;
+  displaySearchResults();
+}
+
+function changePage(page) {
+  const filteredResults = currentCategory === 'all' ? currentSearchResults :
+                          currentCategory === 'tech' ? currentSearchResults.filter(b => isTechBook(b)) :
+                          currentSearchResults.filter(b => !isTechBook(b));
+  const totalPages = Math.ceil(filteredResults.length / RESULTS_PER_PAGE);
+
+  if (page < 1 || page > totalPages) return;
+
+  currentPage = page;
+  displaySearchResults();
+
+  // トップにスクロール
+  document.getElementById('searchResults').scrollIntoView({ behavior: 'smooth' });
 }
 
 // PDFをダウンロードしてライブラリに追加
@@ -1051,32 +1183,60 @@ async function loadVoicesList() {
     // 現在の選択肢をクリア
     select.innerHTML = '';
 
-    // 日本語音声を優先
-    const japaneseVoices = voices.filter(v => v.includes('Kyoko') || v.includes('Otoya'));
-    const englishVoices = voices.filter(v => v.includes('Alex') || v.includes('Samantha'));
-    const otherVoices = voices.filter(v => !japaneseVoices.includes(v) && !englishVoices.includes(v));
+    // プラットフォーム別に音声を分類
+    const japaneseVoices = voices.filter(v =>
+      v.includes('Kyoko') || v.includes('Otoya') ||
+      v.includes('Haruka') || v.includes('Sayaka')
+    );
 
-    // オプションを追加
-    japaneseVoices.forEach(voice => {
-      const option = document.createElement('option');
-      option.value = voice;
-      option.textContent = `${voice} (日本語)`;
-      select.appendChild(option);
-    });
+    const englishVoices = voices.filter(v =>
+      v.includes('Alex') || v.includes('Samantha') ||
+      v.includes('David') || v.includes('Zira') || v.includes('Mark') ||
+      v.includes('en-') || v === 'en'
+    );
 
-    englishVoices.forEach(voice => {
-      const option = document.createElement('option');
-      option.value = voice;
-      option.textContent = `${voice} (English)`;
-      select.appendChild(option);
-    });
+    const otherVoices = voices.filter(v =>
+      !japaneseVoices.includes(v) && !englishVoices.includes(v)
+    );
 
-    otherVoices.slice(0, 10).forEach(voice => {
-      const option = document.createElement('option');
-      option.value = voice;
-      option.textContent = voice;
-      select.appendChild(option);
-    });
+    // 日本語音声グループ
+    if (japaneseVoices.length > 0) {
+      const japGroup = document.createElement('optgroup');
+      japGroup.label = '日本語音声';
+      japaneseVoices.forEach(voice => {
+        const option = document.createElement('option');
+        option.value = voice;
+        option.textContent = voice;
+        japGroup.appendChild(option);
+      });
+      select.appendChild(japGroup);
+    }
+
+    // 英語音声グループ
+    if (englishVoices.length > 0) {
+      const engGroup = document.createElement('optgroup');
+      engGroup.label = 'English Voices';
+      englishVoices.forEach(voice => {
+        const option = document.createElement('option');
+        option.value = voice;
+        option.textContent = voice;
+        engGroup.appendChild(option);
+      });
+      select.appendChild(engGroup);
+    }
+
+    // その他の音声
+    if (otherVoices.length > 0) {
+      const otherGroup = document.createElement('optgroup');
+      otherGroup.label = 'その他';
+      otherVoices.slice(0, 10).forEach(voice => {
+        const option = document.createElement('option');
+        option.value = voice;
+        option.textContent = voice;
+        otherGroup.appendChild(option);
+      });
+      select.appendChild(otherGroup);
+    }
 
   } catch (error) {
     console.error('Error loading voices:', error);
@@ -1085,7 +1245,7 @@ async function loadVoicesList() {
 
 function loadSettings() {
   const settings = {
-    voice: localStorage.getItem('tts_voice') || 'Kyoko',
+    voice: localStorage.getItem('tts_voice') || '', // プラットフォームに応じた最初の音声を使用
     speed: localStorage.getItem('tts_speed') || '2.0',
     autoNext: localStorage.getItem('auto_next') === 'true',
     theme: localStorage.getItem('theme') || 'dark',
@@ -1093,7 +1253,14 @@ function loadSettings() {
   };
 
   // UIに反映
-  document.getElementById('voiceSelect').value = settings.voice;
+  const voiceSelect = document.getElementById('voiceSelect');
+  if (settings.voice && voiceSelect.querySelector(`option[value="${settings.voice}"]`)) {
+    voiceSelect.value = settings.voice;
+  } else if (voiceSelect.options.length > 0) {
+    // 保存された音声がない場合は最初の音声を選択
+    voiceSelect.selectedIndex = 0;
+  }
+
   document.getElementById('speedSlider').value = settings.speed;
   document.getElementById('speedValue').textContent = settings.speed;
   document.getElementById('autoNextChapter').checked = settings.autoNext;

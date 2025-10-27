@@ -34,8 +34,14 @@
 ### 🔊 自動連続読み上げ機能（TTS）
 - **自動連続読み上げ**: ページ終了後、自動的に次のページへ進む
 - 本の最後まで操作不要で聴き続けられる
-- macOS標準の`say`コマンド利用
-- 音声選択（Kyoko、Otoya、Alex、Samanthaなど）
+- **クロスプラットフォーム対応**: macOS、Windows、Linux
+  - macOS: `say`コマンド（高品質音声）
+  - Windows: PowerShell + SAPI
+  - Linux: `espeak`
+- 音声選択（プラットフォーム別の利用可能な音声）
+  - macOS: Kyoko、Otoya（日本語）、Alex、Samantha（英語）など
+  - Windows: Microsoft Haruka、Sayaka（日本語）、David、Zira（英語）など
+  - Linux: en、en-us、ja、defaultなど
 - 速度調整（0.5x〜4x、デフォルト2x）
 - リーダー画面で速度をリアルタイム調整
 - 再生/一時停止/停止コントロール
@@ -48,10 +54,26 @@
 
 ## システム要件
 
-- **OS**: macOS 10.15 (Catalina) 以降
+- **OS**:
+  - macOS 10.15 (Catalina) 以降
+  - Windows 10/11 (64-bit)
+  - Linux (Ubuntu 18.04以降推奨)
 - **Node.js**: 16.0.0 以降
 - **npm**: 7.0.0 以降
 - **空き容量**: 500MB以上
+
+### プラットフォーム別の音声読み上げ要件
+
+- **macOS**: 標準の`say`コマンド（プリインストール済み）
+- **Windows**: Windows Speech API (SAPI) / PowerShell（プリインストール済み）
+- **Linux**: `espeak`が必要
+  ```bash
+  # Ubuntu/Debianの場合
+  sudo apt-get install espeak
+
+  # Fedora/CentOSの場合
+  sudo yum install espeak
+  ```
 
 ## インストール
 
@@ -120,7 +142,10 @@ npm start
 ### 6. 基本設定（設定タブ）
 
 1. 左サイドバーの「⚙️ 設定」をクリック
-2. 音声を選択（Kyoko、Otoya、Alex、Samanthaなど）
+2. 音声を選択：
+   - **macOS**: Kyoko、Otoya（日本語）、Alex、Samantha（英語）など
+   - **Windows**: Microsoft Haruka、Sayaka（日本語）、David、Zira（英語）など
+   - **Linux**: en、en-us、ja、defaultなど
 3. デフォルト読み上げ速度を調整
 4. 翻訳のデフォルト設定
 5. 「音声をテスト」ボタンで確認
@@ -163,8 +188,10 @@ tech-book-reader/
 - **Internet Archive API**: パブリックドメイン書籍の取得
 - **Google Translate API**: 無料翻訳サービス（非公式エンドポイント）
 
-### TTS
-- **macOS `say` コマンド**: ネイティブ音声読み上げ
+### TTS（Text-to-Speech）
+- **macOS**: `say`コマンド（ネイティブ音声読み上げ）
+- **Windows**: PowerShell + Windows Speech API (SAPI)
+- **Linux**: `espeak`コマンドライン音声合成
 
 ## 翻訳の仕組み
 
@@ -224,10 +251,33 @@ npm run build
 
 ### 読み上げが動作しない・音声が出ない
 
-- macOSの「システム環境設定」→「アクセシビリティ」→「読み上げコンテンツ」を確認
+#### macOS
+- 「システム環境設定」→「アクセシビリティ」→「読み上げコンテンツ」を確認
 - 選択した音声がインストールされているか確認
 - ターミナルで動作確認：`say "テスト"`
 - 音量設定を確認
+
+#### Windows
+- PowerShellが有効になっているか確認
+- Windows Speech API (SAPI)が正常に動作しているか確認
+- PowerShellで動作確認：
+  ```powershell
+  Add-Type -AssemblyName System.Speech
+  $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer
+  $synth.Speak("Test")
+  ```
+- 「設定」→「時刻と言語」→「音声認識」で音声がインストールされているか確認
+- 日本語音声を追加する場合：「設定」→「時刻と言語」→「言語」→「日本語」→「オプション」→「音声合成」からダウンロード
+
+#### Linux
+- espeakがインストールされているか確認：`which espeak`
+- インストールされていない場合：
+  ```bash
+  sudo apt-get install espeak  # Ubuntu/Debian
+  sudo yum install espeak      # Fedora/CentOS
+  ```
+- ターミナルで動作確認：`espeak "test"`
+- 音量設定とオーディオデバイスを確認
 
 ### 自動連続読み上げが止まる
 
@@ -260,9 +310,9 @@ npm run build
 - [ ] 他言語への翻訳対応（英→日以外）
 - [ ] オフライン翻訳モード
 - [ ] カスタムテーマ
-- [ ] Windows/Linux対応（TTS機能の実装）
 - [ ] MOBI形式のサポート
 - [ ] 音声ファイルへのエクスポート
+- [ ] Windows/Linux向けの高品質TTS音声の追加オプション
 
 ## ライセンス
 
@@ -275,9 +325,27 @@ MIT License
 - このアプリケーションは**無料の書籍のみ**をダウンロードできます
 - パブリックドメインまたはオープンライセンスの書籍のみを対象としています
 - Google Translate APIの非公式エンドポイントを使用しているため、大量翻訳時にレート制限される可能性があります
-- TTS機能はmacOSのみ対応しています
+- TTS機能は**macOS、Windows、Linux**に対応していますが、プラットフォームごとに音声品質や利用可能な音声が異なります
 - ダウンロードした書籍は個人利用の範囲でご使用ください
 - 著作権法を遵守してください
+
+### プラットフォーム別の制限
+
+#### macOS
+- 最も多くの高品質音声が利用可能（Kyoko、Otoyaなど）
+- 速度調整が柔軟（0.5x〜4.0x）
+
+#### Windows
+- Windows Speech API (SAPI) を使用
+- デフォルトで英語音声のみインストールされている場合があります
+- 日本語音声は「設定」→「言語」から追加ダウンロードが必要な場合があります
+- 速度調整範囲がmacOSと異なる場合があります
+
+#### Linux
+- espeakはシンプルなロボット音声
+- 音声品質はmacOS/Windowsに比べて低め
+- インストールが別途必要
+- 日本語音声の品質に制限あり
 
 ### プライバシー
 
