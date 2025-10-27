@@ -698,4 +698,135 @@ ipcMain.handle('get-tts-status', async () => {
   }
 });
 
+// 翻訳済みテキストをPDFとして保存
+ipcMain.handle('save-translated-pdf', async (event, content, defaultFileName) => {
+  try {
+    // ファイル保存ダイアログを表示
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: '翻訳版PDFを保存',
+      defaultPath: path.join(app.getPath('documents'), defaultFileName),
+      filters: [
+        { name: 'PDFファイル', extensions: ['pdf'] },
+        { name: 'テキストファイル', extensions: ['txt'] },
+        { name: 'すべてのファイル', extensions: ['*'] }
+      ]
+    });
+
+    if (result.canceled) {
+      return { success: false, canceled: true };
+    }
+
+    const savePath = result.filePath;
+    const ext = path.extname(savePath).toLowerCase();
+
+    // 拡張子に応じて保存
+    if (ext === '.pdf') {
+      // PDFとして保存（HTMLからPDF変換）
+      const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    @page {
+      margin: 2cm;
+    }
+    body {
+      font-family: 'Hiragino Sans', 'Yu Gothic', 'MS Gothic', sans-serif;
+      font-size: 12pt;
+      line-height: 1.8;
+      color: #333;
+    }
+    h1 {
+      font-size: 24pt;
+      margin-bottom: 10px;
+      border-bottom: 2px solid #333;
+      padding-bottom: 10px;
+    }
+    h2 {
+      font-size: 18pt;
+      margin-top: 30px;
+      margin-bottom: 15px;
+      color: #444;
+      page-break-after: avoid;
+    }
+    .metadata {
+      color: #666;
+      font-size: 10pt;
+      margin-bottom: 30px;
+    }
+    .separator {
+      border-top: 1px solid #ccc;
+      margin: 20px 0;
+    }
+    p {
+      margin: 10px 0;
+      text-align: justify;
+    }
+  </style>
+</head>
+<body>
+${content}
+</body>
+</html>`;
+
+      // 一時的なHTMLファイルを作成
+      const os = require('os');
+      const tempHtmlPath = path.join(os.tmpdir(), `temp-translated-${Date.now()}.html`);
+      await fs.writeFile(tempHtmlPath, htmlContent, 'utf-8');
+
+      // 一時的なBrowserWindowを作成してPDFを生成
+      const { BrowserWindow } = require('electron');
+      const pdfWindow = new BrowserWindow({
+        show: false,
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true
+        }
+      });
+
+      await pdfWindow.loadFile(tempHtmlPath);
+
+      const pdfData = await pdfWindow.webContents.printToPDF({
+        pageSize: 'A4',
+        printBackground: true,
+        margins: {
+          top: 2,
+          bottom: 2,
+          left: 2,
+          right: 2
+        }
+      });
+
+      await fs.writeFile(savePath, pdfData);
+      pdfWindow.close();
+
+      // 一時ファイルを削除
+      await fs.unlink(tempHtmlPath).catch(() => {});
+
+    } else {
+      // テキストファイルとして保存
+      // HTMLタグを除去
+      const textContent = content
+        .replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&amp;/g, '&');
+
+      await fs.writeFile(savePath, textContent, 'utf-8');
+    }
+
+    return {
+      success: true,
+      filePath: savePath,
+      message: `ファイルを保存しました:\n${savePath}`
+    };
+
+  } catch (error) {
+    console.error('Error saving translated PDF:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 console.log('Tech Book Reader - Main process started');

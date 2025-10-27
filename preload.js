@@ -86,6 +86,12 @@ contextBridge.exposeInMainWorld('bookReaderAPI', {
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
   loadSettings: () => ipcRenderer.invoke('load-settings'),
 
+  // 翻訳版の保存
+  saveTranslatedPDF: async (content, defaultFileName) => {
+    const result = await ipcRenderer.invoke('save-translated-pdf', content, defaultFileName);
+    return result;
+  },
+
   // イベントリスナー
   onTTSFinished: (callback) => ipcRenderer.on('tts-finished', callback),
   onTTSError: (callback) => ipcRenderer.on('tts-error', (event, error) => callback(error))

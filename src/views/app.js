@@ -105,6 +105,7 @@ function setupEventListeners() {
     document.getElementById('currentSpeed').textContent = speed.toFixed(1) + 'x';
   });
   document.getElementById('pageJumpBtn').addEventListener('click', jumpToPage);
+  document.getElementById('downloadTranslatedBtn').addEventListener('click', downloadTranslatedBook);
 
   // 設定
   document.getElementById('voiceSelect').addEventListener('change', saveSettings);
@@ -923,6 +924,12 @@ async function translateEntireBook(filePath, bookData) {
 
     console.log('Translation completed for all pages');
 
+    // 翻訳完了後、ダウンロードボタンを表示
+    const downloadBtn = document.getElementById('downloadTranslatedBtn');
+    if (downloadBtn) {
+      downloadBtn.style.display = 'inline-block';
+    }
+
   } catch (error) {
     console.error('Error translating book:', error);
     alert('本の翻訳中にエラーが発生しました: ' + error.message);
@@ -1064,6 +1071,12 @@ function closeReader() {
 
   // モーダルを閉じる
   document.getElementById('readerModal').style.display = 'none';
+
+  // ダウンロードボタンを非表示
+  const downloadBtn = document.getElementById('downloadTranslatedBtn');
+  if (downloadBtn) {
+    downloadBtn.style.display = 'none';
+  }
 
   // リーダーをリセット
   currentBook = null;
@@ -1380,6 +1393,77 @@ async function updateLibraryStats() {
       <div class="stat-card-label">お気に入り</div>
     </div>
   `;
+}
+
+// 翻訳済みの本をダウンロード
+async function downloadTranslatedBook() {
+  if (!currentBook || !currentBookData) {
+    alert('本が開かれていません');
+    return;
+  }
+
+  const filePath = currentBook.filePath;
+  const translatedText = translatedBookCache[filePath];
+
+  if (!translatedText) {
+    alert('翻訳がまだ完了していません。翻訳を有効にして完了するまでお待ちください。');
+    return;
+  }
+
+  try {
+    // 翻訳済みテキストをHTML形式で結合
+    const chapters = currentBookData.chapters || currentBookData.pages || [];
+    let htmlContent = '';
+
+    // ヘッダー情報
+    htmlContent += `<h1>${currentBook.title}</h1>\n`;
+    htmlContent += `<div class="metadata">\n`;
+    htmlContent += `<p>著者: ${currentBook.authors ? currentBook.authors.join(', ') : currentBook.author || 'Unknown'}</p>\n`;
+    htmlContent += `<p>翻訳日: ${new Date().toLocaleDateString('ja-JP')}</p>\n`;
+    htmlContent += `</div>\n`;
+    htmlContent += `<div class="separator"></div>\n`;
+
+    // 各章を追加
+    for (let i = 0; i < chapters.length; i++) {
+      const chapter = chapters[i];
+      const chapterTitle = chapter.title || chapter.label || `ページ ${i + 1}`;
+      const translatedContent = translatedText[i] || '';
+
+      if (translatedContent) {
+        htmlContent += `<h2>${chapterTitle}</h2>\n`;
+
+        // テキストを段落に分割
+        const paragraphs = translatedContent.split('\n').filter(p => p.trim());
+        paragraphs.forEach(para => {
+          htmlContent += `<p>${para.trim()}</p>\n`;
+        });
+
+        if (i < chapters.length - 1) {
+          htmlContent += `<div class="separator"></div>\n`;
+        }
+      }
+    }
+
+    // ファイル名を生成
+    const sanitizedTitle = currentBook.title.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '_');
+    const defaultFileName = `${sanitizedTitle}_翻訳版.pdf`;
+
+    // メインプロセスにPDF保存を依頼
+    const result = await window.bookReaderAPI.saveTranslatedPDF(htmlContent, defaultFileName);
+
+    if (result.success) {
+      alert(result.message);
+    } else if (result.canceled) {
+      // キャンセルされた場合は何もしない
+      console.log('Save dialog was canceled');
+    } else {
+      throw new Error(result.error || '保存に失敗しました');
+    }
+
+  } catch (error) {
+    console.error('Error downloading translated book:', error);
+    alert('ダウンロード中にエラーが発生しました: ' + error.message);
+  }
 }
 
 // アプリケーションを初期化
