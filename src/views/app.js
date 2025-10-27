@@ -622,10 +622,33 @@ async function downloadAndAddToLibrary(book) {
 
       // ライブラリビューに切り替え
       switchView('library');
+    } else {
+      // ダウンロードエラーの詳細メッセージ
+      let errorMsg = 'ダウンロードに失敗しました。';
+
+      if (result.error.includes('ステータスコード')) {
+        errorMsg = 'ダウンロードリンクが無効です。この本は現在ダウンロードできません。';
+      } else if (result.error.includes('PDFファイルではありません')) {
+        errorMsg = 'ダウンロードしたファイルはPDFではありません。';
+      } else if (result.error.includes('有効なPDFではありません')) {
+        errorMsg = 'ダウンロードしたファイルは破損しているか、無効なPDFです。';
+      } else if (result.error.includes('小さすぎます')) {
+        errorMsg = 'ダウンロードしたPDFファイルが破損している可能性があります。';
+      } else {
+        errorMsg = `エラー: ${result.error}`;
+      }
+
+      alert(errorMsg + '\n\n別の本を試してください。');
     }
   } catch (error) {
     console.error('Download and add to library error:', error);
-    alert(`エラー: ${error.message}`);
+    alert(`ダウンロードエラー: ${error.message}\n\n別の本を試してください。`);
+  } finally {
+    // ローディングが残っていれば削除
+    const loadingOverlay = document.querySelector('.loading-overlay');
+    if (loadingOverlay) {
+      loadingOverlay.remove();
+    }
   }
 }
 
@@ -786,7 +809,21 @@ async function openBook(bookId) {
 
   } catch (error) {
     console.error('Error opening book:', error);
-    alert('本を開けませんでした: ' + error.message);
+
+    // エラーの種類に応じてメッセージを表示
+    let errorMessage = '本を開けませんでした: ' + error.message;
+
+    if (error.corrupted) {
+      errorMessage = 'このPDFは破損しているか、対応していない形式です。ライブラリから削除されました。\n別の本を試してください。';
+      // ライブラリを再読み込み
+      await loadLibraryBooks();
+    } else if (error.fileNotFound) {
+      errorMessage = 'ファイルが見つかりません。削除された可能性があります。';
+      // ライブラリを再読み込み
+      await loadLibraryBooks();
+    }
+
+    alert(errorMessage);
     closeReader();
   }
 }

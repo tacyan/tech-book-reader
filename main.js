@@ -11,6 +11,9 @@ let libraryManager = null;
 let currentReaders = {}; // bookId -> reader instance
 let ttsProcess = null;
 
+// プラットフォーム検出
+const platform = process.platform; // 'darwin', 'win32', 'linux'
+
 let mainWindow;
 
 function createWindow() {
@@ -265,35 +268,113 @@ ipcMain.handle('download-and-add-to-library', async (event, bookData) => {
     // PDFをダウンロード
     await new Promise((resolve, reject) => {
       const file = require('fs').createWriteStream(filePath);
+      let downloadFailed = false;
 
-      protocol.get(downloadUrl, (response) => {
+      // リクエストオプション（ヘッダー付き）
+      const requestOptions = {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'application/pdf,application/octet-stream,*/*',
+          'Accept-Language': 'en-US,en;q=0.9,ja;q=0.8',
+          'Referer': downloadUrl,
+          'Connection': 'keep-alive'
+        }
+      };
+
+      const handleResponse = (response) => {
+        // ステータスコードをチェック
+        if (response.statusCode !== 200 && response.statusCode !== 301 && response.statusCode !== 302) {
+          downloadFailed = true;
+          file.close();
+          require('fs').unlink(filePath, () => {});
+          reject(new Error(`ダウンロードに失敗しました。ステータスコード: ${response.statusCode}`));
+          return;
+        }
+
         // リダイレクトを処理
         if (response.statusCode === 301 || response.statusCode === 302) {
           const redirectUrl = response.headers.location;
-          const redirectProtocol = redirectUrl.startsWith('https') ? https : http;
 
-          redirectProtocol.get(redirectUrl, (redirectResponse) => {
-            redirectResponse.pipe(file);
-            file.on('finish', () => {
-              file.close();
-              resolve();
-            });
-          }).on('error', (err) => {
-            require('fs').unlink(filePath, () => {}); // ファイルを削除
+          // 相対URLの場合は絶対URLに変換
+          const absoluteRedirectUrl = redirectUrl.startsWith('http')
+            ? redirectUrl
+            : new URL(redirectUrl, downloadUrl).toString();
+
+          const redirectProtocol = absoluteRedirectUrl.startsWith('https') ? https : http;
+          const redirectOptions = {
+            ...requestOptions,
+            headers: {
+              ...requestOptions.headers,
+              'Referer': downloadUrl
+            }
+          };
+
+          redirectProtocol.get(absoluteRedirectUrl, redirectOptions, handleResponse).on('error', (err) => {
+            downloadFailed = true;
+            file.close();
+            require('fs').unlink(filePath, () => {});
             reject(err);
           });
-        } else {
-          response.pipe(file);
-          file.on('finish', () => {
-            file.close();
-            resolve();
-          });
+          return;
         }
-      }).on('error', (err) => {
-        require('fs').unlink(filePath, () => {}); // ファイルを削除
-        reject(err);
+
+        // Content-Typeをチェック（より寛容に）
+        const contentType = response.headers['content-type'];
+        if (contentType &&
+            !contentType.includes('pdf') &&
+            !contentType.includes('application/octet-stream') &&
+            !contentType.includes('binary/octet-stream') &&
+            !contentType.includes('application/x-pdf')) {
+          console.warn(`Warning: Unexpected Content-Type: ${contentType}, but continuing download`);
+          // エラーにせず、ダウンロードを続行
+        }
+
+        response.pipe(file);
+        file.on('finish', () => {
+          file.close();
+          resolve();
+        });
+        file.on('error', (err) => {
+          downloadFailed = true;
+          require('fs').unlink(filePath, () => {});
+          reject(err);
+        });
+      };
+
+      protocol.get(downloadUrl, requestOptions, handleResponse).on('error', (err) => {
+        if (!downloadFailed) {
+          file.close();
+          require('fs').unlink(filePath, () => {});
+          reject(err);
+        }
       });
     });
+
+    // ダウンロードしたファイルが有効なPDFかを検証
+    try {
+      const fileBuffer = await fs.readFile(filePath);
+
+      // PDFファイルのマジックナンバー（先頭4バイト）をチェック
+      const pdfHeader = fileBuffer.slice(0, 4).toString('ascii');
+      if (pdfHeader !== '%PDF') {
+        await fs.unlink(filePath);
+        throw new Error('ダウンロードしたファイルは有効なPDFではありません');
+      }
+
+      // ファイルサイズをチェック（100バイト未満は無効）
+      if (fileBuffer.length < 100) {
+        await fs.unlink(filePath);
+        throw new Error('ダウンロードしたPDFファイルが小さすぎます（破損している可能性）');
+      }
+
+      // ファイルサイズが50MBを超える場合は警告（ただしダウンロードは許可）
+      if (fileBuffer.length > 50 * 1024 * 1024) {
+        console.warn(`Warning: Large PDF file (${Math.round(fileBuffer.length / 1024 / 1024)}MB)`);
+      }
+    } catch (validationError) {
+      console.error('PDF validation failed:', validationError);
+      throw new Error(`PDFの検証に失敗しました: ${validationError.message}`);
+    }
 
     // ライブラリに追加
     const bookInfo = {
@@ -350,6 +431,17 @@ ipcMain.handle('update-progress', async (event, bookId, progress, currentPositio
 // 本を開く
 ipcMain.handle('open-book', async (event, filePath) => {
   try {
+    // ファイルの存在確認
+    try {
+      await fs.access(filePath);
+    } catch (accessError) {
+      return {
+        success: false,
+        error: 'ファイルが見つかりません。削除された可能性があります。',
+        fileNotFound: true
+      };
+    }
+
     // ライブラリから本を検索して無料かどうかをチェック
     const books = libraryManager.getAllBooks();
     const book = books.find(b => b.filePath === filePath);
@@ -370,7 +462,36 @@ ipcMain.handle('open-book', async (event, filePath) => {
       await reader.openBook(filePath);
     } else if (ext === '.pdf') {
       reader = new PDFReaderService();
-      await reader.openBook(filePath);
+
+      try {
+        await reader.openBook(filePath);
+
+        // PDFが正常に開けたか検証
+        if (!reader.pages || reader.pages.length === 0) {
+          throw new Error('PDFの読み込みに失敗しました（ページが見つかりません）');
+        }
+      } catch (pdfError) {
+        console.error('Error opening PDF:', pdfError);
+
+        // PDFが破損している可能性がある場合はファイルを削除してライブラリから削除
+        if (book) {
+          console.log('Removing corrupted PDF from library:', book.id);
+          await libraryManager.removeBook(book.id);
+
+          // ファイルも削除
+          try {
+            await fs.unlink(filePath);
+          } catch (unlinkError) {
+            console.error('Error deleting corrupted PDF:', unlinkError);
+          }
+        }
+
+        return {
+          success: false,
+          error: 'このPDFは破損しているか、対応していない形式です。ライブラリから削除されました。',
+          corrupted: true
+        };
+      }
     } else {
       throw new Error('Unsupported file format');
     }
@@ -440,65 +561,34 @@ ipcMain.handle('get-chapter-text', async (event, filePath, chapterIndex) => {
 // 利用可能な音声リストを取得
 ipcMain.handle('get-voices', async () => {
   try {
-    if (platform === 'darwin') {
-      // macOS: sayコマンドから音声リストを取得
-      return new Promise((resolve, reject) => {
-        const sayProcess = spawn('say', ['-v', '?']);
-        let output = '';
+    return new Promise((resolve, reject) => {
+      const sayProcess = spawn('say', ['-v', '?']);
+      let output = '';
 
-        sayProcess.stdout.on('data', (data) => {
-          output += data.toString();
-        });
-
-        sayProcess.on('close', (code) => {
-          if (code === 0) {
-            const voices = output.split('\n')
-              .filter(line => line.trim().length > 0)
-              .map(line => {
-                const match = line.match(/^(\S+)/);
-                return match ? match[1] : null;
-              })
-              .filter(v => v !== null);
-
-            resolve({ success: true, data: voices });
-          } else {
-            resolve({ success: true, data: ['Kyoko', 'Otoya', 'Alex', 'Samantha'] });
-          }
-        });
-
-        sayProcess.on('error', (error) => {
-          resolve({ success: true, data: ['Kyoko', 'Otoya', 'Alex', 'Samantha'] });
-        });
+      sayProcess.stdout.on('data', (data) => {
+        output += data.toString();
       });
 
-    } else if (platform === 'win32') {
-      // Windows: デフォルトの音声リスト（SAPI標準）
-      return {
-        success: true,
-        data: [
-          'Microsoft David Desktop',
-          'Microsoft Zira Desktop',
-          'Microsoft Mark',
-          'Microsoft Haruka Desktop', // 日本語
-          'Microsoft Sayaka Desktop'  // 日本語
-        ]
-      };
+      sayProcess.on('close', (code) => {
+        if (code === 0) {
+          const voices = output.split('\n')
+            .filter(line => line.trim().length > 0)
+            .map(line => {
+              const match = line.match(/^(\S+)/);
+              return match ? match[1] : null;
+            })
+            .filter(v => v !== null);
 
-    } else if (platform === 'linux') {
-      // Linux: espeakのデフォルト音声
-      return {
-        success: true,
-        data: [
-          'en', 'en-us', 'en-uk',
-          'ja', // 日本語
-          'default'
-        ]
-      };
-    }
+          resolve({ success: true, data: voices });
+        } else {
+          resolve({ success: true, data: ['Kyoko', 'Otoya', 'Alex', 'Samantha'] });
+        }
+      });
 
-    // フォールバック
-    return { success: true, data: ['default'] };
-
+      sayProcess.on('error', (error) => {
+        reject({ success: false, error: error.message });
+      });
+    });
   } catch (error) {
     return { success: false, error: error.message };
   }
@@ -521,9 +611,6 @@ ipcMain.handle('get-tts-config', async () => {
 });
 
 // TTSを開始
-// プラットフォームを検出
-const platform = process.platform; // 'darwin', 'win32', 'linux'
-
 ipcMain.handle('start-tts', async (event, text, options = {}) => {
   try {
     // 既存のTTSを停止
@@ -534,68 +621,36 @@ ipcMain.handle('start-tts', async (event, text, options = {}) => {
 
     const voice = options.voice || 'Kyoko';
     const speed = options.speed || 2.0;
+    const rate = Math.round(175 * speed); // WPMに変換
 
-    // プラットフォームに応じてTTSを起動
-    if (platform === 'darwin') {
-      // macOS: say コマンド
-      const rate = Math.round(175 * speed);
-      const escapedText = text.replace(/"/g, '\\"');
+    // テキストをエスケープ
+    const escapedText = text.replace(/"/g, '\\"');
 
-      ttsProcess = spawn('say', [
-        '-v', voice,
-        '-r', rate.toString(),
-        escapedText
-      ]);
+    // sayコマンドでTTSを開始
+    ttsProcess = spawn('say', [
+      '-v', voice,
+      '-r', rate.toString(),
+      escapedText
+    ]);
 
-    } else if (platform === 'win32') {
-      // Windows: PowerShellでSAPI (Speech API) を使用
-      const rate = Math.round(speed * 2 - 2); // -10〜10の範囲に変換
+    ttsProcess.on('close', (code) => {
+      console.log('TTS finished with code:', code);
+      ttsProcess = null;
+      // 完了イベントを送信
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('tts-finished');
+      }
+    });
 
-      // PowerShellスクリプト
-      const psScript = `
-        Add-Type -AssemblyName System.Speech;
-        $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer;
-        $synth.Rate = ${rate};
-        $synth.Speak("${text.replace(/"/g, '""').replace(/\n/g, ' ')}");
-      `;
+    ttsProcess.on('error', (error) => {
+      console.error('TTS error:', error);
+      ttsProcess = null;
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('tts-error', error.message);
+      }
+    });
 
-      ttsProcess = spawn('powershell.exe', [
-        '-NoProfile',
-        '-NonInteractive',
-        '-Command',
-        psScript
-      ]);
-
-    } else if (platform === 'linux') {
-      // Linux: espeak
-      const rate = Math.round(175 * speed);
-      const escapedText = text.replace(/"/g, '\\"');
-
-      ttsProcess = spawn('espeak', [
-        '-s', rate.toString(),
-        escapedText
-      ]);
-    }
-
-    if (ttsProcess) {
-      ttsProcess.on('close', (code) => {
-        console.log(`TTS finished with code: ${code} on ${platform}`);
-        ttsProcess = null;
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('tts-finished');
-        }
-      });
-
-      ttsProcess.on('error', (error) => {
-        console.error('TTS error:', error);
-        ttsProcess = null;
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('tts-error', error.message);
-        }
-      });
-    }
-
-    return { success: true, platform: platform };
+    return { success: true };
   } catch (error) {
     console.error('Error starting TTS:', error);
     return { success: false, error: error.message };
