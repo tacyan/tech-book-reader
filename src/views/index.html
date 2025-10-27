@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tech Book Reader</title>
+  <link rel="stylesheet" href="../styles/main.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- サイドバー -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <h1 class="app-title">📚 Tech Book Reader</h1>
+      </div>
+
+      <nav class="sidebar-nav">
+        <button class="nav-item active" data-view="library">
+          <span class="icon">📖</span>
+          <span>ライブラリ</span>
+        </button>
+        <button class="nav-item" data-view="search">
+          <span class="icon">🔍</span>
+          <span>本を検索</span>
+        </button>
+        <button class="nav-item" data-view="reading">
+          <span class="icon">📗</span>
+          <span>読書中</span>
+        </button>
+        <button class="nav-item" data-view="favorites">
+          <span class="icon">⭐</span>
+          <span>お気に入り</span>
+        </button>
+        <button class="nav-item" data-view="settings">
+          <span class="icon">⚙️</span>
+          <span>設定</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="stats">
+          <div class="stat-item">
+            <span class="stat-label">総数</span>
+            <span class="stat-value" id="totalBooks">0</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">読書中</span>
+            <span class="stat-value" id="readingBooks">0</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- メインコンテンツ -->
+    <main class="main-content">
+      <!-- ライブラリビュー -->
+      <div class="view active" id="library-view">
+        <div class="view-header">
+          <h2>マイライブラリ</h2>
+          <div class="view-actions">
+            <button class="btn btn-primary" id="addBookBtn">
+              <span>+ 本を追加</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="search-bar">
+          <input type="text" id="librarySearch" placeholder="タイトル、著者で検索...">
+          <select id="sortBy">
+            <option value="addedDate">追加日順</option>
+            <option value="title">タイトル順</option>
+            <option value="author">著者順</option>
+            <option value="lastReadDate">最終読書日順</option>
+          </select>
+          <select id="filterType">
+            <option value="all">すべて</option>
+            <option value="epub">EPUB</option>
+            <option value="pdf">PDF</option>
+          </select>
+        </div>
+
+        <div class="books-grid" id="booksGrid">
+          <div class="empty-state">
+            <div class="empty-icon">📚</div>
+            <h3>本がありません</h3>
+            <p>「本を追加」ボタンからEPUBまたはPDFファイルを追加してください</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 検索ビュー -->
+      <div class="view" id="search-view">
+        <div class="view-header">
+          <h2>技術書を検索</h2>
+        </div>
+
+        <div class="search-section">
+          <div class="search-input-group">
+            <input type="text" id="bookSearch" placeholder="本のタイトル、著者、キーワードを入力...">
+            <button class="btn btn-primary" id="searchBtn">検索</button>
+          </div>
+
+          <div class="quick-topics">
+            <h3>人気トピック</h3>
+            <div class="topic-tags" id="topicTags"></div>
+          </div>
+
+          <div class="publishers">
+            <h3>出版社</h3>
+            <div class="publisher-tags" id="publisherTags"></div>
+          </div>
+        </div>
+
+        <div class="search-results" id="searchResults">
+          <div class="empty-state">
+            <div class="empty-icon">🔍</div>
+            <h3>検索してください</h3>
+            <p>キーワードを入力して技術書を検索できます</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 読書中ビュー -->
+      <div class="view" id="reading-view">
+        <div class="view-header">
+          <h2>読書中の本</h2>
+        </div>
+        <div class="books-grid" id="readingGrid"></div>
+      </div>
+
+      <!-- お気に入りビュー -->
+      <div class="view" id="favorites-view">
+        <div class="view-header">
+          <h2>お気に入り</h2>
+        </div>
+        <div class="books-grid" id="favoritesGrid"></div>
+      </div>
+
+      <!-- 設定ビュー -->
+      <div class="view" id="settings-view">
+        <div class="view-header">
+          <h2>設定</h2>
+        </div>
+
+        <div class="settings-section">
+          <h3>読み上げ設定</h3>
+
+          <div class="setting-item">
+            <label for="voiceSelect">音声</label>
+            <select id="voiceSelect">
+              <option value="Kyoko">Kyoko (日本語・女性)</option>
+              <option value="Otoya">Otoya (日本語・男性)</option>
+              <option value="Alex">Alex (English)</option>
+              <option value="Samantha">Samantha (English)</option>
+            </select>
+          </div>
+
+          <div class="setting-item">
+            <label for="speedSlider">読み上げ速度: <span id="speedValue">2.0</span>x</label>
+            <input type="range" id="speedSlider" min="0.5" max="4" step="0.1" value="2.0">
+          </div>
+
+          <div class="setting-item">
+            <label>
+              <input type="checkbox" id="autoNextChapter" checked>
+              章の終わりで自動的に次の章へ進む
+            </label>
+          </div>
+
+          <div class="setting-item">
+            <label>
+              <input type="checkbox" id="translateToJapanese">
+              英語を日本語に翻訳してから読み上げる
+            </label>
+          </div>
+
+          <div class="setting-item">
+            <button class="btn btn-secondary" id="testVoiceBtn">音声をテスト</button>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h3>表示設定</h3>
+
+          <div class="setting-item">
+            <label for="themeSelect">テーマ</label>
+            <select id="themeSelect">
+              <option value="dark">ダーク</option>
+              <option value="light">ライト</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h3>ライブラリ情報</h3>
+          <div class="library-stats" id="libraryStats"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- リーダーウィンドウ（モーダル） -->
+  <div class="reader-modal" id="readerModal" style="display: none;">
+    <div class="reader-container">
+      <div class="reader-header">
+        <button class="btn-icon" id="closeReaderBtn">✕</button>
+        <div class="reader-title" id="readerTitle">読み込み中...</div>
+        <div class="reader-controls">
+          <button class="btn-icon" id="ttsPlayBtn">▶</button>
+          <button class="btn-icon" id="ttsPauseBtn" style="display:none;">⏸</button>
+          <button class="btn-icon" id="ttsStopBtn">⏹</button>
+          <span class="reading-speed" id="currentSpeed">2.0x</span>
+        </div>
+      </div>
+
+      <div class="reader-content">
+        <div class="reader-controls-bar">
+          <div class="control-group">
+            <label>
+              <input type="checkbox" id="readerTranslateToggle">
+              英→日翻訳
+            </label>
+          </div>
+          <div class="control-group">
+            <label for="readerSpeedSlider">速度: <span id="readerSpeedValue">2.0</span>x</label>
+            <input type="range" id="readerSpeedSlider" min="0.5" max="4" step="0.1" value="2.0">
+          </div>
+          <div class="control-group">
+            <label for="pageJumpInput">ページジャンプ:</label>
+            <input type="number" id="pageJumpInput" min="1" placeholder="ページ番号" style="width: 80px;">
+            <button class="btn btn-small" id="pageJumpBtn">移動</button>
+          </div>
+        </div>
+
+        <div class="reader-main">
+          <div class="reader-sidebar">
+            <h3>目次 / ページ</h3>
+            <div class="chapter-list" id="chapterList"></div>
+          </div>
+
+          <div class="reader-text-container">
+            <div class="reader-text" id="readerText">
+              <p>本を読み込んでいます...</p>
+            </div>
+
+            <div class="reader-footer">
+              <button class="btn btn-secondary" id="prevChapterBtn">← 前</button>
+              <div class="progress-info">
+                <span id="currentChapterInfo">-</span>
+                <div class="progress-bar">
+                  <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                </div>
+              </div>
+              <button class="btn btn-secondary" id="nextChapterBtn">次 →</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- JavaScriptファイルを読み込み -->
+  <script src="../services/book-search.js"></script>
+  <script src="../services/library-manager.js"></script>
+  <script src="../services/translator.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
