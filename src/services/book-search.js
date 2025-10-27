@@ -735,7 +735,8 @@ class BookSearchService {
         pageCount: 574,
         keywords: ['git', 'version control', 'バージョン管理', 'github'],
         isFree: true,
-        pdfAvailable: true
+        pdfAvailable: true,
+        source: 'Curated Free PDFs'
       },
       // Python
       {
@@ -746,12 +747,29 @@ class BookSearchService {
         publishedDate: '2015',
         description: 'Pythonプログラミングの基礎から応用まで学べる入門書。',
         categories: ['Python', 'Programming'],
-        thumbnail: null,
+        thumbnail: 'https://greenteapress.com/thinkpython2/think_python2_medium.jpg',
         downloadLink: 'https://greenteapress.com/thinkpython2/thinkpython2.pdf',
         pageCount: 292,
         keywords: ['python', 'programming', 'パイソン', 'プログラミング'],
         isFree: true,
-        pdfAvailable: true
+        pdfAvailable: true,
+        source: 'Curated Free PDFs'
+      },
+      {
+        id: 'python-notes',
+        title: 'Python Notes for Professionals',
+        authors: ['GoalKicker.com'],
+        publisher: 'GoalKicker.com',
+        publishedDate: '2023',
+        description: 'Pythonの実践的なノート集。',
+        categories: ['Python', 'Programming'],
+        thumbnail: 'https://goalkicker.com/PythonBook/PythonNotesForProfessionals.png',
+        downloadLink: 'https://goalkicker.com/PythonBook/PythonNotesForProfessionals.pdf',
+        pageCount: 816,
+        keywords: ['python', 'programming', 'パイソン', 'プログラミング'],
+        isFree: true,
+        pdfAvailable: true,
+        source: 'Curated Free PDFs'
       },
       {
         id: 'automate-python',
@@ -761,12 +779,13 @@ class BookSearchService {
         publishedDate: '2019',
         description: 'Pythonで退屈な作業を自動化。実践的なプログラミング入門。',
         categories: ['Python', 'Automation', 'Programming'],
-        thumbnail: null,
+        thumbnail: 'https://automatetheboringstuff.com/images/automate_2e_cover.png',
         downloadLink: 'https://automatetheboringstuff.com/2e/automate-online.pdf',
         pageCount: 500,
         keywords: ['python', 'automation', 'scripting', '自動化', 'プログラミング'],
         isFree: true,
-        pdfAvailable: true
+        pdfAvailable: true,
+        source: 'Curated Free PDFs'
       },
       // JavaScript
       {
@@ -777,12 +796,13 @@ class BookSearchService {
         publishedDate: '2018',
         description: 'JavaScriptの基礎から高度なプログラミング技法まで学べる名著。',
         categories: ['JavaScript', 'Web Development', 'Programming'],
-        thumbnail: null,
+        thumbnail: 'https://eloquentjavascript.net/img/cover.jpg',
         downloadLink: 'https://eloquentjavascript.net/Eloquent_JavaScript.pdf',
         pageCount: 472,
         keywords: ['javascript', 'web', 'programming', 'node', 'js'],
         isFree: true,
-        pdfAvailable: true
+        pdfAvailable: true,
+        source: 'Curated Free PDFs'
       },
       {
         id: 'javascript-notes',
@@ -792,12 +812,13 @@ class BookSearchService {
         publishedDate: '2023',
         description: 'JavaScriptの実践的なノート集。',
         categories: ['JavaScript', 'Programming'],
-        thumbnail: null,
+        thumbnail: 'https://goalkicker.com/JavaScriptBook/JavaScriptNotesForProfessionals.png',
         downloadLink: 'https://goalkicker.com/JavaScriptBook/JavaScriptNotesForProfessionals.pdf',
         pageCount: 490,
         keywords: ['javascript', 'js', 'web', 'programming'],
         isFree: true,
-        pdfAvailable: true
+        pdfAvailable: true,
+        source: 'Curated Free PDFs'
       },
       // Go
       {
@@ -808,12 +829,13 @@ class BookSearchService {
         publishedDate: '2023',
         description: 'Go言語の実践的なノート集。',
         categories: ['Go', 'Programming'],
-        thumbnail: null,
+        thumbnail: 'https://goalkicker.com/GoBook/GoNotesForProfessionals.png',
         downloadLink: 'https://goalkicker.com/GoBook/GoNotesForProfessionals.pdf',
         pageCount: 214,
         keywords: ['go', 'golang', 'programming', 'Go言語'],
         isFree: true,
-        pdfAvailable: true
+        pdfAvailable: true,
+        source: 'Curated Free PDFs'
       },
       // C++
       {
@@ -824,12 +846,13 @@ class BookSearchService {
         publishedDate: '2023',
         description: 'C++の実践的なノート集。',
         categories: ['C++', 'Programming'],
-        thumbnail: null,
+        thumbnail: 'https://goalkicker.com/CPlusPlusBook/CPlusPlusNotesForProfessionals.png',
         downloadLink: 'https://goalkicker.com/CPlusPlusBook/CPlusPlusNotesForProfessionals.pdf',
         pageCount: 707,
         keywords: ['c++', 'cpp', 'programming', 'シープラスプラス'],
         isFree: true,
-        pdfAvailable: true
+        pdfAvailable: true,
+        source: 'Curated Free PDFs'
       },
       // Linux
       {
@@ -840,12 +863,13 @@ class BookSearchService {
         publishedDate: '2023',
         description: 'Linuxの実践的なノート集。',
         categories: ['Linux', 'Operating System'],
-        thumbnail: null,
+        thumbnail: 'https://goalkicker.com/LinuxBook/LinuxNotesForProfessionals.png',
         downloadLink: 'https://goalkicker.com/LinuxBook/LinuxNotesForProfessionals.pdf',
         pageCount: 157,
         keywords: ['linux', 'unix', 'operating system', 'リナックス'],
         isFree: true,
-        pdfAvailable: true
+        pdfAvailable: true,
+        source: 'Curated Free PDFs'
       },
       // Docker
       {
@@ -856,12 +880,13 @@ class BookSearchService {
         publishedDate: '2023',
         description: 'Dockerの実践的なノート集。',
         categories: ['Docker', 'DevOps', 'Containers'],
-        thumbnail: null,
+        thumbnail: 'https://goalkicker.com/DockerBook/DockerNotesForProfessionals.png',
         downloadLink: 'https://goalkicker.com/DockerBook/DockerNotesForProfessionals.pdf',
         pageCount: 107,
         keywords: ['docker', 'containers', 'devops', 'コンテナ'],
         isFree: true,
-        pdfAvailable: true
+        pdfAvailable: true,
+        source: 'Curated Free PDFs'
       },
       // AI/ML
       {
@@ -877,7 +902,8 @@ class BookSearchService {
         pageCount: 607,
         keywords: ['machine learning', 'statistics', 'data science', '機械学習', '統計'],
         isFree: true,
-        pdfAvailable: true
+        pdfAvailable: true,
+        source: 'Curated Free PDFs'
       },
       // 文学・小説（パブリックドメイン）
       {
@@ -893,7 +919,8 @@ class BookSearchService {
         pageCount: 400,
         keywords: ['pride and prejudice', 'jane austen', 'classic', 'fiction', '小説', '文学'],
         isFree: true,
-        pdfAvailable: true
+        pdfAvailable: true,
+        source: 'Curated Free PDFs'
       },
       {
         id: 'alice-wonderland',
@@ -908,7 +935,8 @@ class BookSearchService {
         pageCount: 200,
         keywords: ['alice', 'wonderland', 'carroll', 'fantasy', 'アリス', 'ファンタジー'],
         isFree: true,
-        pdfAvailable: true
+        pdfAvailable: true,
+        source: 'Curated Free PDFs'
       },
       {
         id: 'sherlock-holmes',
@@ -923,7 +951,8 @@ class BookSearchService {
         pageCount: 307,
         keywords: ['sherlock', 'holmes', 'mystery', 'detective', 'ホームズ', '推理', 'ミステリー'],
         isFree: true,
-        pdfAvailable: true
+        pdfAvailable: true,
+        source: 'Curated Free PDFs'
       },
       // ビジネス・自己啓発
       {
@@ -939,7 +968,8 @@ class BookSearchService {
         pageCount: 76,
         keywords: ['self-help', 'philosophy', 'thinking', '自己啓発', '哲学', '思考'],
         isFree: true,
-        pdfAvailable: true
+        pdfAvailable: true,
+        source: 'Curated Free PDFs'
       },
       // 科学
       {
@@ -955,7 +985,8 @@ class BookSearchService {
         pageCount: 502,
         keywords: ['darwin', 'evolution', 'biology', 'science', 'ダーウィン', '進化', '生物学'],
         isFree: true,
-        pdfAvailable: true
+        pdfAvailable: true,
+        source: 'Curated Free PDFs'
       },
       // Web Development
       {
@@ -971,7 +1002,8 @@ class BookSearchService {
         pageCount: 300,
         keywords: ['html5', 'html', 'web', 'development', 'frontend', 'ウェブ開発'],
         isFree: true,
-        pdfAvailable: true
+        pdfAvailable: true,
+        source: 'Curated Free PDFs'
       },
       // データベース
       {
@@ -987,7 +1019,8 @@ class BookSearchService {
         pageCount: 3000,
         keywords: ['postgresql', 'postgres', 'database', 'sql', 'データベース'],
         isFree: true,
-        pdfAvailable: true
+        pdfAvailable: true,
+        source: 'Curated Free PDFs'
       },
       // アルゴリズム
       {
@@ -998,12 +1031,13 @@ class BookSearchService {
         publishedDate: '2018',
         description: 'アルゴリズムとデータ構造の包括的なノート集。',
         categories: ['Algorithms', 'Data Structures', 'Computer Science'],
-        thumbnail: null,
+        thumbnail: 'https://goalkicker.com/AlgorithmsBook/AlgorithmsNotesForProfessionals.png',
         downloadLink: 'https://goalkicker.com/AlgorithmsBook/AlgorithmsNotesForProfessionals.pdf',
         pageCount: 257,
         keywords: ['algorithms', 'data structures', 'computer science', 'アルゴリズム', 'データ構造'],
         isFree: true,
-        pdfAvailable: true
+        pdfAvailable: true,
+        source: 'Curated Free PDFs'
       },
       // TypeScript
       {
@@ -1019,7 +1053,8 @@ class BookSearchService {
         pageCount: 400,
         keywords: ['typescript', 'ts', 'javascript', 'programming', 'タイプスクリプト'],
         isFree: true,
-        pdfAvailable: true
+        pdfAvailable: true,
+        source: 'Curated Free PDFs'
       },
       // Node.js
       {
@@ -1030,12 +1065,13 @@ class BookSearchService {
         publishedDate: '2018',
         description: 'Node.jsの実践的なノート集。バックエンド開発に必須。',
         categories: ['Node.js', 'JavaScript', 'Backend'],
-        thumbnail: null,
+        thumbnail: 'https://goalkicker.com/NodeJSBook/NodeJSNotesForProfessionals.png',
         downloadLink: 'https://goalkicker.com/NodeJSBook/NodeJSNotesForProfessionals.pdf',
         pageCount: 340,
         keywords: ['nodejs', 'node', 'javascript', 'backend', 'server', 'ノード'],
         isFree: true,
-        pdfAvailable: true
+        pdfAvailable: true,
+        source: 'Curated Free PDFs'
       },
       // React
       {
@@ -1046,12 +1082,13 @@ class BookSearchService {
         publishedDate: '2018',
         description: 'React.jsの実践的なノート集。モダンなフロントエンド開発。',
         categories: ['React', 'JavaScript', 'Frontend'],
-        thumbnail: null,
+        thumbnail: 'https://goalkicker.com/ReactJSBook/ReactJSNotesForProfessionals.png',
         downloadLink: 'https://goalkicker.com/ReactJSBook/ReactJSNotesForProfessionals.pdf',
         pageCount: 176,
         keywords: ['react', 'reactjs', 'javascript', 'frontend', 'リアクト'],
         isFree: true,
-        pdfAvailable: true
+        pdfAvailable: true,
+        source: 'Curated Free PDFs'
       },
       // CSS
       {
@@ -1062,12 +1099,13 @@ class BookSearchService {
         publishedDate: '2018',
         description: 'CSSの包括的なノート集。スタイリングの基礎から応用まで。',
         categories: ['CSS', 'Web Design', 'Frontend'],
-        thumbnail: null,
+        thumbnail: 'https://goalkicker.com/CSSBook/CSSNotesForProfessionals.png',
         downloadLink: 'https://goalkicker.com/CSSBook/CSSNotesForProfessionals.pdf',
         pageCount: 357,
         keywords: ['css', 'styling', 'web design', 'frontend', 'スタイル'],
         isFree: true,
-        pdfAvailable: true
+        pdfAvailable: true,
+        source: 'Curated Free PDFs'
       },
       // Java
       {
@@ -1078,12 +1116,13 @@ class BookSearchService {
         publishedDate: '2018',
         description: 'Javaプログラミングの包括的なノート集。',
         categories: ['Java', 'Programming', 'OOP'],
-        thumbnail: null,
+        thumbnail: 'https://goalkicker.com/JavaBook/JavaNotesForProfessionals.png',
         downloadLink: 'https://goalkicker.com/JavaBook/JavaNotesForProfessionals.pdf',
         pageCount: 1036,
         keywords: ['java', 'programming', 'oop', 'jvm', 'ジャバ', 'プログラミング'],
         isFree: true,
-        pdfAvailable: true
+        pdfAvailable: true,
+        source: 'Curated Free PDFs'
       },
       // C++
       {
@@ -1094,12 +1133,13 @@ class BookSearchService {
         publishedDate: '2018',
         description: 'C++プログラミングの実践的なノート集。',
         categories: ['C++', 'Programming', 'Systems'],
-        thumbnail: null,
+        thumbnail: 'https://goalkicker.com/CPlusPlusBook/CPlusPlusNotesForProfessionals.png',
         downloadLink: 'https://goalkicker.com/CPlusPlusBook/CPlusPlusNotesForProfessionals.pdf',
         pageCount: 707,
         keywords: ['c++', 'cpp', 'programming', 'systems', 'プログラミング'],
         isFree: true,
-        pdfAvailable: true
+        pdfAvailable: true,
+        source: 'Curated Free PDFs'
       },
       // MongoDB
       {
@@ -1110,12 +1150,13 @@ class BookSearchService {
         publishedDate: '2018',
         description: 'MongoDBの実践的なノート集。NoSQLデータベースの基礎。',
         categories: ['MongoDB', 'Database', 'NoSQL'],
-        thumbnail: null,
+        thumbnail: 'https://goalkicker.com/MongoDBBook/MongoDBNotesForProfessionals.png',
         downloadLink: 'https://goalkicker.com/MongoDBBook/MongoDBNotesForProfessionals.pdf',
         pageCount: 109,
         keywords: ['mongodb', 'mongo', 'database', 'nosql', 'データベース'],
         isFree: true,
-        pdfAvailable: true
+        pdfAvailable: true,
+        source: 'Curated Free PDFs'
       },
       // 哲学
       {
@@ -1131,7 +1172,8 @@ class BookSearchService {
         pageCount: 300,
         keywords: ['plato', 'philosophy', 'republic', 'classic', 'プラトン', '哲学', '国家'],
         isFree: true,
-        pdfAvailable: true
+        pdfAvailable: true,
+        source: 'Curated Free PDFs'
       },
       // 経済学
       {
@@ -1147,7 +1189,8 @@ class BookSearchService {
         pageCount: 1200,
         keywords: ['economics', 'adam smith', 'wealth', 'business', '経済学', '国富論'],
         isFree: true,
-        pdfAvailable: true
+        pdfAvailable: true,
+        source: 'Curated Free PDFs'
       },
 
       // === 追加の高品質技術書 ===
@@ -1161,12 +1204,13 @@ class BookSearchService {
         publishedDate: '2023',
         description: 'SQLの実践的なノート集。',
         categories: ['SQL', 'Database', 'Programming'],
-        thumbnail: null,
+        thumbnail: 'https://goalkicker.com/SQLBook/SQLNotesForProfessionals.png',
         downloadLink: 'https://goalkicker.com/SQLBook/SQLNotesForProfessionals.pdf',
         pageCount: 91,
         keywords: ['sql', 'database', 'query', 'データベース', 'クエリ'],
         isFree: true,
-        pdfAvailable: true
+        pdfAvailable: true,
+        source: 'Curated Free PDFs'
       },
 
       // MySQL
@@ -1178,12 +1222,13 @@ class BookSearchService {
         publishedDate: '2023',
         description: 'MySQLの実践的なノート集。',
         categories: ['MySQL', 'Database', 'SQL'],
-        thumbnail: null,
+        thumbnail: 'https://goalkicker.com/MySQLBook/MySQLNotesForProfessionals.png',
         downloadLink: 'https://goalkicker.com/MySQLBook/MySQLNotesForProfessionals.pdf',
         pageCount: 135,
         keywords: ['mysql', 'database', 'sql', 'データベース'],
         isFree: true,
-        pdfAvailable: true
+        pdfAvailable: true,
+        source: 'Curated Free PDFs'
       },
 
       // Git
@@ -1195,12 +1240,13 @@ class BookSearchService {
         publishedDate: '2023',
         description: 'Gitの実践的なノート集。',
         categories: ['Git', 'Version Control', 'Programming'],
-        thumbnail: null,
+        thumbnail: 'https://goalkicker.com/GitBook/GitNotesForProfessionals.png',
         downloadLink: 'https://goalkicker.com/GitBook/GitNotesForProfessionals.pdf',
         pageCount: 157,
         keywords: ['git', 'version control', 'github', 'バージョン管理'],
         isFree: true,
-        pdfAvailable: true
+        pdfAvailable: true,
+        source: 'Curated Free PDFs'
       },
 
       // Bash
@@ -1212,12 +1258,13 @@ class BookSearchService {
         publishedDate: '2023',
         description: 'Bashの実践的なノート集。',
         categories: ['Bash', 'Shell', 'Linux'],
-        thumbnail: null,
+        thumbnail: 'https://goalkicker.com/BashBook/BashNotesForProfessionals.png',
         downloadLink: 'https://goalkicker.com/BashBook/BashNotesForProfessionals.pdf',
         pageCount: 156,
         keywords: ['bash', 'shell', 'linux', 'command line', 'シェル'],
         isFree: true,
-        pdfAvailable: true
+        pdfAvailable: true,
+        source: 'Curated Free PDFs'
       },
 
       // Android
@@ -1229,12 +1276,13 @@ class BookSearchService {
         publishedDate: '2023',
         description: 'Androidアプリ開発の実践的なノート集。',
         categories: ['Android', 'Mobile Development', 'Java'],
-        thumbnail: null,
+        thumbnail: 'https://goalkicker.com/AndroidBook/AndroidNotesForProfessionals.png',
         downloadLink: 'https://goalkicker.com/AndroidBook/AndroidNotesForProfessionals.pdf',
         pageCount: 506,
         keywords: ['android', 'mobile', 'app development', 'java', 'アンドロイド'],
         isFree: true,
-        pdfAvailable: true
+        pdfAvailable: true,
+        source: 'Curated Free PDFs'
       },
 
       // iOS
@@ -1246,12 +1294,13 @@ class BookSearchService {
         publishedDate: '2023',
         description: 'iOSアプリ開発の実践的なノート集。',
         categories: ['iOS', 'Mobile Development', 'Swift'],
-        thumbnail: null,
+        thumbnail: 'https://goalkicker.com/iOSBook/iOSNotesForProfessionals.png',
         downloadLink: 'https://goalkicker.com/iOSBook/iOSNotesForProfessionals.pdf',
         pageCount: 180,
         keywords: ['ios', 'mobile', 'swift', 'app development', 'アイオーエス'],
         isFree: true,
-        pdfAvailable: true
+        pdfAvailable: true,
+        source: 'Curated Free PDFs'
       }
     ];
   }

@@ -245,7 +245,7 @@ function createBookCard(book) {
   return `
     <div class="book-card ${!isFree ? 'paid-book' : ''}" data-book-id="${book.id}">
       <div class="book-cover">
-        ${coverUrl ? `<img src="${coverUrl}" alt="${title}">` : '📖'}
+        ${coverUrl ? `<img src="${coverUrl}" alt="${title}" onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=\\'font-size: 4rem;\\'>📖</div>' + this.parentElement.innerHTML.replace(/<img[^>]*>/g, '')">` : '<div style="font-size: 4rem;">📖</div>'}
         ${freeLabel}
         ${downloadButton}
         <button class="btn-delete" onclick="event.stopPropagation(); deleteBook('${book.id}')">🗑️</button>
@@ -673,7 +673,7 @@ function createSearchResultCard(book) {
   return `
     <div class="result-card ${!isFree ? 'paid-book' : ''} ${isCuratedPdf ? 'curated-pdf' : ''}" data-book-json="${bookJsonEscaped}">
       <div class="result-cover">
-        ${thumbnail ? `<img src="${thumbnail}" alt="${book.title}">` : '📖'}
+        ${thumbnail ? `<img src="${thumbnail}" alt="${book.title}" onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=\\'font-size: 3rem; display: flex; align-items: center; justify-content: center; height: 100%;\\'>📖</div>' + this.parentElement.innerHTML.replace(/<img[^>]*>/g, '')">` : '<div style="font-size: 3rem; display: flex; align-items: center; justify-content: center; height: 100%;">📖</div>'}
         ${freeLabel}
         ${isCuratedPdf ? '<span class="verified-badge">✓ 検証済み</span>' : ''}
       </div>
