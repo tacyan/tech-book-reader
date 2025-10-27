@@ -1,18 +1,29 @@
 /**
  * Text-to-Speech エンジン
- * macOSのsayコマンドを使用してテキストを読み上げ
+ * クロスプラットフォーム対応（macOS, Windows, Linux）
  */
 
 const { spawn, exec } = require('child_process');
 const { promisify } = require('util');
 const execAsync = promisify(exec);
+const os = require('os');
 
 class TTSEngine {
   constructor() {
     this.currentProcess = null;
     this.isPlaying = false;
     this.isPaused = false;
-    this.voice = 'Kyoko';
+    this.platform = os.platform();
+
+    // プラットフォーム別のデフォルト音声
+    if (this.platform === 'win32') {
+      this.voice = 'Microsoft Haruka Desktop'; // Windows日本語音声
+    } else if (this.platform === 'darwin') {
+      this.voice = 'Kyoko'; // macOS日本語音声
+    } else {
+      this.voice = 'ja'; // Linux (espeak)
+    }
+
     this.speed = 2.0;
     this.onComplete = null;
     this.onError = null;
@@ -35,46 +46,157 @@ class TTSEngine {
       this.isPlaying = true;
       this.isPaused = false;
 
-      // 読み上げ速度を計算（wpm）
-      const rate = Math.round(175 * this.speed);
-
-      // テキストをエスケープ
-      const escapedText = text.replace(/"/g, '\\"');
-
-      // sayコマンドで読み上げ
-      this.currentProcess = spawn('say', [
-        '-v', this.voice,
-        '-r', rate.toString(),
-        escapedText
-      ]);
-
-      this.currentProcess.on('close', (code) => {
-        this.isPlaying = false;
-        this.currentProcess = null;
-
-        if (code === 0) {
-          if (this.onComplete) {
-            this.onComplete();
-          }
-          resolve();
+      try {
+        if (this.platform === 'darwin') {
+          // macOS - say command
+          this.speakMacOS(text, resolve, reject);
+        } else if (this.platform === 'win32') {
+          // Windows - PowerShell Add-Type System.Speech
+          this.speakWindows(text, resolve, reject);
         } else {
-          const error = new Error(`say command exited with code ${code}`);
-          if (this.onError) {
-            this.onError(error);
-          }
-          reject(error);
+          // Linux - espeak or festival
+          this.speakLinux(text, resolve, reject);
         }
-      });
-
-      this.currentProcess.on('error', (error) => {
+      } catch (error) {
         this.isPlaying = false;
-        this.currentProcess = null;
-
         if (this.onError) {
           this.onError(error);
         }
         reject(error);
-      });
+      }
+    });
+  }
+
+  /**
+   * macOSで読み上げ
+   */
+  speakMacOS(text, resolve, reject) {
+    const rate = Math.round(175 * this.speed);
+    const escapedText = text.replace(/"/g, '\\"');
+
+    this.currentProcess = spawn('say', [
+      '-v', this.voice,
+      '-r', rate.toString(),
+      escapedText
+    ]);
+
+    this.currentProcess.on('close', (code) => {
+      this.isPlaying = false;
+      this.currentProcess = null;
+
+      if (code === 0) {
+        if (this.onComplete) {
+          this.onComplete();
+        }
+        resolve();
+      } else {
+        const error = new Error(`say command exited with code ${code}`);
+        if (this.onError) {
+          this.onError(error);
+        }
+        reject(error);
+      }
+    });
+
+    this.currentProcess.on('error', (error) => {
+      this.isPlaying = false;
+      this.currentProcess = null;
+      if (this.onError) {
+        this.onError(error);
+      }
+      reject(error);
+    });
+  }
+
+  /**
+   * Windowsで読み上げ
+   */
+  speakWindows(text, resolve, reject) {
+    // PowerShellスクリプトでSpeechSynthesizerを使用
+    const rate = Math.round((this.speed - 1) * 10); // -10 to 10
+    const escapedText = text.replace(/'/g, "''").replace(/`/g, '``');
+
+    const psScript = `
+Add-Type -AssemblyName System.Speech;
+$synth = New-Object System.Speech.Synthesis.SpeechSynthesizer;
+$synth.SelectVoice('${this.voice}');
+$synth.Rate = ${rate};
+$synth.Speak('${escapedText}');
+`;
+
+    this.currentProcess = spawn('powershell.exe', [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      psScript
+    ]);
+
+    this.currentProcess.on('close', (code) => {
+      this.isPlaying = false;
+      this.currentProcess = null;
+
+      if (code === 0) {
+        if (this.onComplete) {
+          this.onComplete();
+        }
+        resolve();
+      } else {
+        const error = new Error(`PowerShell TTS exited with code ${code}`);
+        if (this.onError) {
+          this.onError(error);
+        }
+        reject(error);
+      }
+    });
+
+    this.currentProcess.on('error', (error) => {
+      this.isPlaying = false;
+      this.currentProcess = null;
+      if (this.onError) {
+        this.onError(error);
+      }
+      reject(error);
+    });
+  }
+
+  /**
+   * Linuxで読み上げ
+   */
+  speakLinux(text, resolve, reject) {
+    // espeak を使用（インストール必要: sudo apt-get install espeak）
+    const rate = Math.round(175 * this.speed);
+
+    this.currentProcess = spawn('espeak', [
+      '-v', this.voice,
+      '-s', rate.toString(),
+      text
+    ]);
+
+    this.currentProcess.on('close', (code) => {
+      this.isPlaying = false;
+      this.currentProcess = null;
+
+      if (code === 0) {
+        if (this.onComplete) {
+          this.onComplete();
+        }
+        resolve();
+      } else {
+        const error = new Error(`espeak exited with code ${code}`);
+        if (this.onError) {
+          this.onError(error);
+        }
+        reject(error);
+      }
+    });
+
+    this.currentProcess.on('error', (error) => {
+      this.isPlaying = false;
+      this.currentProcess = null;
+      if (this.onError) {
+        this.onError(error);
+      }
+      reject(error);
     });
   }
 
@@ -126,31 +248,91 @@ class TTSEngine {
    * 利用可能な音声のリストを取得
    */
   static async getAvailableVoices() {
-    try {
-      const { stdout } = await execAsync('say -v "?"');
-      const voices = stdout.split('\n')
-        .filter(line => line.trim().length > 0)
-        .map(line => {
-          const match = line.match(/^(\S+)/);
-          if (match) {
-            return {
-              name: match[1],
-              fullLine: line.trim()
-            };
-          }
-          return null;
-        })
-        .filter(v => v !== null);
+    const platform = os.platform();
 
-      return voices;
+    try {
+      if (platform === 'darwin') {
+        // macOS
+        const { stdout } = await execAsync('say -v "?"');
+        const voices = stdout.split('\n')
+          .filter(line => line.trim().length > 0)
+          .map(line => {
+            const match = line.match(/^(\S+)/);
+            if (match) {
+              return {
+                name: match[1],
+                fullLine: line.trim()
+              };
+            }
+            return null;
+          })
+          .filter(v => v !== null);
+
+        return voices;
+      } else if (platform === 'win32') {
+        // Windows
+        const psScript = `
+Add-Type -AssemblyName System.Speech;
+$synth = New-Object System.Speech.Synthesis.SpeechSynthesizer;
+$synth.GetInstalledVoices() | ForEach-Object { $_.VoiceInfo.Name }
+`;
+        const { stdout } = await execAsync(`powershell.exe -NoProfile -NonInteractive -Command "${psScript}"`);
+        const voices = stdout.split('\n')
+          .filter(line => line.trim().length > 0)
+          .map(name => ({
+            name: name.trim(),
+            fullLine: name.trim()
+          }));
+
+        return voices.length > 0 ? voices : [
+          { name: 'Microsoft Haruka Desktop', fullLine: 'Microsoft Haruka Desktop (Japanese)' },
+          { name: 'Microsoft Zira Desktop', fullLine: 'Microsoft Zira Desktop (English)' }
+        ];
+      } else {
+        // Linux
+        const { stdout } = await execAsync('espeak --voices');
+        const lines = stdout.split('\n').slice(1); // Skip header
+        const voices = lines
+          .filter(line => line.trim().length > 0)
+          .map(line => {
+            const parts = line.trim().split(/\s+/);
+            if (parts.length >= 2) {
+              return {
+                name: parts[1],
+                fullLine: line.trim()
+              };
+            }
+            return null;
+          })
+          .filter(v => v !== null);
+
+        return voices.length > 0 ? voices : [
+          { name: 'ja', fullLine: 'ja (Japanese)' },
+          { name: 'en', fullLine: 'en (English)' }
+        ];
+      }
     } catch (error) {
       console.error('Error getting voices:', error);
-      return [
-        { name: 'Kyoko', fullLine: 'Kyoko (Japanese)' },
-        { name: 'Otoya', fullLine: 'Otoya (Japanese)' },
-        { name: 'Alex', fullLine: 'Alex (English)' },
-        { name: 'Samantha', fullLine: 'Samantha (English)' }
-      ];
+
+      // プラットフォーム別のフォールバック
+      if (platform === 'win32') {
+        return [
+          { name: 'Microsoft Haruka Desktop', fullLine: 'Microsoft Haruka Desktop (Japanese)' },
+          { name: 'Microsoft Zira Desktop', fullLine: 'Microsoft Zira Desktop (English)' }
+        ];
+      } else if (platform === 'darwin') {
+        return [
+          { name: 'Kyoko', fullLine: 'Kyoko (Japanese)' },
+          { name: 'Otoya', fullLine: 'Otoya (Japanese)' },
+          { name: 'Alex', fullLine: 'Alex (English)' },
+          { name: 'Samantha', fullLine: 'Samantha (English)' }
+        ];
+      } else {
+        return [
+          { name: 'ja', fullLine: 'ja (Japanese)' },
+          { name: 'en', fullLine: 'en (English)' }
+        ];
+      }
     }
   }
 
