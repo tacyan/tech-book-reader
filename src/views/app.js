@@ -13,6 +13,7 @@ let currentReader = null; // EPUBReaderまたはPDFReader
 let currentBookData = null; // 現在開いている本のデータ
 let translatedBookCache = {}; // 翻訳済みの本をキャッシュ
 let isAutoReading = false; // 自動読み上げ中かどうか
+let isProcessingPageTransition = false; // ページ遷移処理中フラグ（二重実行防止）
 let currentSettings = {
   translateToJapanese: false
 };
@@ -45,6 +46,31 @@ async function initApp() {
 
     // 設定を読み込み
     loadSettings();
+
+    // TTS完了・エラーイベントを購読（連続再生の確実化）
+    if (window.bookReaderAPI && typeof window.bookReaderAPI.onTTSFinished === 'function') {
+      window.bookReaderAPI.onTTSFinished(async () => {
+        try {
+          if (isAutoReading) {
+            await moveToNextPageAndContinue();
+          }
+        } catch (e) {
+          console.error('onTTSFinished handler error:', e);
+        }
+      });
+    }
+
+    if (window.bookReaderAPI && typeof window.bookReaderAPI.onTTSError === 'function') {
+      window.bookReaderAPI.onTTSError((error) => {
+        console.error('TTS error event:', error);
+        isAutoReading = false;
+        try {
+          document.getElementById('ttsPlayBtn').style.display = 'inline-block';
+          document.getElementById('ttsPauseBtn').style.display = 'none';
+        } catch (_) {}
+        alert('音声再生エラー: ' + error);
+      });
+    }
 
     console.log('App initialized successfully');
   } catch (error) {
@@ -1134,12 +1160,8 @@ async function readCurrentPage() {
 
     console.log('TTS started for current page');
 
-    // 読み上げが完了したら次のページへ
-    await waitForTTSCompletion();
-
-    if (isAutoReading) {
-      await moveToNextPageAndContinue();
-    }
+    // 注意：TTS完了後の処理は onTTSFinished イベントハンドラーで行われます
+    // ここでは waitForTTSCompletion() を呼ばず、イベント駆動で次のページに進みます
 
   } catch (error) {
     console.error('Error reading page:', error);
@@ -1148,48 +1170,62 @@ async function readCurrentPage() {
   }
 }
 
-async function waitForTTSCompletion() {
-  // TTSの完了を待つ（ポーリング方式）
-  return new Promise((resolve) => {
-    const checkInterval = setInterval(async () => {
-      try {
-        const status = await window.bookReaderAPI.getTTSStatus();
-        if (!status.isPlaying) {
-          clearInterval(checkInterval);
-          resolve();
-        }
-      } catch (error) {
-        console.error('Error checking TTS status:', error);
-        clearInterval(checkInterval);
-        resolve();
-      }
-    }, 500); // 500msごとにチェック
-  });
-}
+// 注意：この関数は現在使用されていません（イベント駆動方式に変更）
+// async function waitForTTSCompletion() {
+//   // TTSの完了を待つ（ポーリング方式）
+//   return new Promise((resolve) => {
+//     const checkInterval = setInterval(async () => {
+//       try {
+//         const status = await window.bookReaderAPI.getTTSStatus();
+//         if (!status.isPlaying) {
+//           clearInterval(checkInterval);
+//           resolve();
+//         }
+//       } catch (error) {
+//         console.error('Error checking TTS status:', error);
+//         clearInterval(checkInterval);
+//         resolve();
+//       }
+//     }, 500); // 500msごとにチェック
+//   });
+// }
 
 async function moveToNextPageAndContinue() {
+  // 二重実行を防止
+  if (isProcessingPageTransition) {
+    console.log('Page transition already in progress, skipping...');
+    return;
+  }
+
   if (!currentBook || !currentBookData) return;
 
-  const totalChapters = (currentBookData.chapters || currentBookData.pages || []).length;
-  const currentChapter = currentBook.currentChapter || 0;
+  isProcessingPageTransition = true;
 
-  if (currentChapter < totalChapters - 1) {
-    // 次のページへ
-    await displayChapter(currentChapter + 1);
+  try {
+    const totalChapters = (currentBookData.chapters || currentBookData.pages || []).length;
+    const currentChapter = currentBook.currentChapter || 0;
 
-    // 少し待ってから次のページを読み上げ
-    await new Promise(resolve => setTimeout(resolve, 500));
+    if (currentChapter < totalChapters - 1) {
+      // 次のページへ
+      console.log(`Moving to next page: ${currentChapter} -> ${currentChapter + 1}`);
+      await displayChapter(currentChapter + 1);
 
-    if (isAutoReading) {
-      await readCurrentPage();
+      // 少し待ってから次のページを読み上げ
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      if (isAutoReading) {
+        await readCurrentPage();
+      }
+    } else {
+      // 最後のページに到達
+      console.log('Reached the end of the book');
+      isAutoReading = false;
+      document.getElementById('ttsPlayBtn').style.display = 'inline-block';
+      document.getElementById('ttsPauseBtn').style.display = 'none';
+      alert('本の最後まで読み上げました');
     }
-  } else {
-    // 最後のページに到達
-    console.log('Reached the end of the book');
-    isAutoReading = false;
-    document.getElementById('ttsPlayBtn').style.display = 'inline-block';
-    document.getElementById('ttsPauseBtn').style.display = 'none';
-    alert('本の最後まで読み上げました');
+  } finally {
+    isProcessingPageTransition = false;
   }
 }
 
@@ -1197,6 +1233,7 @@ async function pauseReading() {
   try {
     // 自動読み上げモードを停止
     isAutoReading = false;
+    isProcessingPageTransition = false; // フラグをリセット
 
     await window.bookReaderAPI.pauseTTS();
 
@@ -1212,6 +1249,7 @@ async function stopReading() {
   try {
     // 自動読み上げモードを停止
     isAutoReading = false;
+    isProcessingPageTransition = false; // フラグをリセット
 
     await window.bookReaderAPI.stopTTS();
 

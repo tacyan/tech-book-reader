@@ -558,59 +558,139 @@ ipcMain.handle('get-chapter-text', async (event, filePath, chapterIndex) => {
 
 // ===== TTS機能 =====
 
-// 利用可能な音声リストを取得
+/**
+ * PowerShellに渡すスクリプト文字列をUTF-16LE Base64へ変換
+ * @param {string} script - PowerShellスクリプト文字列
+ * @returns {string} Base64化されたエンコード済みコマンド
+ */
+function encodePsCommand(script) {
+  return Buffer.from(script, 'utf16le').toString('base64');
+}
+
+/**
+ * Windows用の音声一覧取得スクリプトを生成
+ * @returns {string} PowerShellスクリプト
+ */
+function buildWindowsVoicesScript() {
+  return [
+    `$ErrorActionPreference = 'Stop'`,
+    `Add-Type -AssemblyName System.Speech`,
+    `$synth = New-Object System.Speech.Synthesis.SpeechSynthesizer`,
+    `$synth.GetInstalledVoices() | ForEach-Object { $_.VoiceInfo.Name }`
+  ].join(';');
+}
+
+/**
+ * Windows用のTTSスクリプトを生成（UTF-8テキストをBase64で埋め込む）
+ * @param {string} voiceName - 音声名
+ * @param {number} sapiRate - -10〜10 のレート
+ * @param {string} text - 読み上げテキスト
+ * @returns {string} PowerShellスクリプト
+ */
+function buildWindowsSpeakScript(voiceName, sapiRate, text) {
+  const textB64 = Buffer.from(text, 'utf8').toString('base64');
+  const safeVoice = (voiceName || '').replace(/`/g, '``').replace(/'/g, "''");
+  return [
+    `$ErrorActionPreference = 'Stop'`,
+    `Add-Type -AssemblyName System.Speech`,
+    `$synth = New-Object System.Speech.Synthesis.SpeechSynthesizer`,
+    `try { $synth.SelectVoice('${safeVoice}') } catch { }`,
+    `$synth.Volume = 100`,
+    `$synth.Rate = ${sapiRate}`,
+    `$bytes = [Convert]::FromBase64String('${textB64}')`,
+    `$text  = [Text.Encoding]::UTF8.GetString($bytes)`,
+    `$synth.Speak($text)`
+  ].join(';');
+}
+
+// 利用可能な音声リストを取得（OS別）
 ipcMain.handle('get-voices', async () => {
   try {
-    return new Promise((resolve, reject) => {
-      const sayProcess = spawn('say', ['-v', '?']);
-      let output = '';
-
-      sayProcess.stdout.on('data', (data) => {
-        output += data.toString();
-      });
-
-      sayProcess.on('close', (code) => {
-        if (code === 0) {
-          const voices = output.split('\n')
-            .filter(line => line.trim().length > 0)
-            .map(line => {
-              const match = line.match(/^(\S+)/);
-              return match ? match[1] : null;
-            })
-            .filter(v => v !== null);
-
-          resolve({ success: true, data: voices });
-        } else {
+    if (platform === 'darwin') {
+      return new Promise((resolve) => {
+        const sayProcess = spawn('say', ['-v', '?']);
+        let output = '';
+        sayProcess.stdout.on('data', (data) => { output += data.toString(); });
+        sayProcess.on('close', (code) => {
+          if (code === 0) {
+            const voices = output.split('\n')
+              .filter(line => line.trim().length > 0)
+              .map(line => {
+                const match = line.match(/^(\S+)/);
+                return match ? match[1] : null;
+              })
+              .filter(Boolean);
+            resolve({ success: true, data: voices });
+          } else {
+            resolve({ success: true, data: ['Kyoko', 'Otoya', 'Alex', 'Samantha'] });
+          }
+        });
+        sayProcess.on('error', () => {
           resolve({ success: true, data: ['Kyoko', 'Otoya', 'Alex', 'Samantha'] });
-        }
+        });
       });
+    }
 
-      sayProcess.on('error', (error) => {
-        reject({ success: false, error: error.message });
+    if (platform === 'win32') {
+      const script = buildWindowsVoicesScript();
+      const encoded = encodePsCommand(script);
+      return new Promise((resolve) => {
+        const ps = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encoded]);
+        let output = '';
+        ps.stdout.on('data', (d) => { output += d.toString(); });
+        ps.on('close', () => {
+          const voices = output.split(/\r?\n/).map(s => s.trim()).filter(s => s.length > 0);
+          if (voices.length > 0) {
+            resolve({ success: true, data: voices });
+          } else {
+            resolve({ success: true, data: ['Microsoft Haruka Desktop', 'Microsoft Sayaka Desktop', 'Microsoft Zira Desktop', 'Microsoft David Desktop'] });
+          }
+        });
+        ps.on('error', () => {
+          resolve({ success: true, data: ['Microsoft Haruka Desktop', 'Microsoft Zira Desktop'] });
+        });
       });
+    }
+
+    // Linux (espeak)
+    return new Promise((resolve) => {
+      const es = spawn('espeak', ['--voices']);
+      let output = '';
+      es.stdout.on('data', (d) => { output += d.toString(); });
+      es.on('close', () => {
+        const lines = output.split('\n').slice(1);
+        const voices = lines
+          .map(line => line.trim().split(/\s+/)[1])
+          .filter(Boolean);
+        resolve({ success: true, data: voices.length > 0 ? voices : ['ja', 'en'] });
+      });
+      es.on('error', () => resolve({ success: true, data: ['ja', 'en'] }));
     });
   } catch (error) {
     return { success: false, error: error.message };
   }
 });
 
-// TTS設定を取得
+// TTS設定を取得（設定ファイルが無ければOSに適したデフォルトを返す）
 ipcMain.handle('get-tts-config', async () => {
   try {
-    const result = await ipcMain.handleOnce('load-settings');
-    return result;
+    const userDataPath = app.getPath('userData');
+    const settingsPath = path.join(userDataPath, 'settings.json');
+    try {
+      const txt = await fs.readFile(settingsPath, 'utf-8');
+      return { success: true, data: JSON.parse(txt) };
+    } catch (e) {
+      // デフォルト
+      const defaultVoice = platform === 'win32' ? 'Microsoft Haruka Desktop' : (platform === 'darwin' ? 'Kyoko' : 'ja');
+      return { success: true, data: { voice: defaultVoice, speed: 2.0 } };
+    }
   } catch (error) {
-    return {
-      success: true,
-      data: {
-        voice: 'Kyoko',
-        speed: 2.0
-      }
-    };
+    const fallbackVoice = platform === 'win32' ? 'Microsoft Haruka Desktop' : (platform === 'darwin' ? 'Kyoko' : 'ja');
+    return { success: true, data: { voice: fallbackVoice, speed: 2.0 } };
   }
 });
 
-// TTSを開始
+// TTSを開始（OS別に処理）
 ipcMain.handle('start-tts', async (event, text, options = {}) => {
   try {
     // 既存のTTSを停止
@@ -619,24 +699,28 @@ ipcMain.handle('start-tts', async (event, text, options = {}) => {
       ttsProcess = null;
     }
 
-    const voice = options.voice || 'Kyoko';
-    const speed = options.speed || 2.0;
-    const rate = Math.round(175 * speed); // WPMに変換
+    const speed = Number(options.speed || 2.0);
+    const voice = String(options.voice || (platform === 'win32' ? 'Microsoft Haruka Desktop' : (platform === 'darwin' ? 'Kyoko' : 'ja')));
 
-    // テキストをエスケープ
-    const escapedText = text.replace(/"/g, '\\"');
-
-    // sayコマンドでTTSを開始
-    ttsProcess = spawn('say', [
-      '-v', voice,
-      '-r', rate.toString(),
-      escapedText
-    ]);
+    if (platform === 'darwin') {
+      const rate = Math.round(175 * speed);
+      const escapedText = text.replace(/\"/g, '\\\"');
+      ttsProcess = spawn('say', ['-v', voice, '-r', String(rate), escapedText]);
+    } else if (platform === 'win32') {
+      // SAPIのレートへ変換（-10〜10）。speed=2.0で+10程度に。
+      const sapiRate = Math.max(-10, Math.min(10, Math.round((speed - 1) * 10)));
+      const script = buildWindowsSpeakScript(voice, sapiRate, text);
+      const encoded = encodePsCommand(script);
+      ttsProcess = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encoded]);
+    } else {
+      // Linux espeak（速度はwpm相当に換算）
+      const rate = Math.round(175 * speed);
+      ttsProcess = spawn('espeak', ['-v', voice, '-s', String(rate), text]);
+    }
 
     ttsProcess.on('close', (code) => {
       console.log('TTS finished with code:', code);
       ttsProcess = null;
-      // 完了イベントを送信
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('tts-finished');
       }

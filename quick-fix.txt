@@ -1,0 +1,12 @@
+# 管理者PowerShellで以下を順番に実行してください
+
+# 1. 除外設定を追加
+Add-MpPreference -ExclusionPath "$env:USERPROFILE\.tech-book-reader"
+
+# 2. 確認
+Get-MpPreference | Select-Object -ExpandProperty ExclusionPath
+
+# 3. 管理者PowerShellを閉じて、通常のPowerShellで以下を実行
+# cd C:\Users\varuv\Desktop\dev\tech-book-reader
+# .\test-antivirus.ps1
+

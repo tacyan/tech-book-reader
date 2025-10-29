@@ -4,8 +4,12 @@
   "description": "Technical Book Reader with Search and Text-to-Speech",
   "main": "main.js",
   "scripts": {
-    "start": "electron .",
-    "dev": "electron . --enable-logging"
+    "install-electron": "node scripts/install-electron.js",
+    "sign-electron": "node scripts/sign-electron.js",
+    "setup": "npm run install-electron && npm run sign-electron",
+    "postinstall": "npm run setup",
+    "start": "node scripts/electron-launcher.js",
+    "dev": "node scripts/electron-launcher.js --enable-logging"
   },
   "keywords": [
     "epub",
@@ -22,6 +26,9 @@
     "pdf-parse": "^1.1.1"
   },
   "devDependencies": {
-    "electron": "^27.3.11"
+    "extract-zip": "^2.0.1"
+  },
+  "electronDownload": {
+    "cache": "%USERPROFILE%\\.tech-book-reader\\electron-cache"
   }
 }
